@@ -36,8 +36,8 @@ export default function HomePage() {
         </h1>
         <p className="text-lg text-slate-600 max-w-xl mx-auto">
           A floating AI mouse that guides users through your web app.
-          Hold <kbd className="px-1.5 py-0.5 bg-white border border-slate-300 rounded text-sm font-mono">X</kbd> and
-          ask how to do something.
+          Press <kbd className="px-1.5 py-0.5 bg-white border border-slate-300 rounded text-sm font-mono">X</kbd> to
+          type a question, or hold it to speak.
         </p>
         <div className="mt-4 inline-flex items-center gap-2 bg-indigo-100 text-indigo-800 px-4 py-2 rounded-full text-sm font-medium">
           <span className="w-2 h-2 rounded-full bg-indigo-500 animate-pulse" />
@@ -70,11 +70,11 @@ export default function HomePage() {
         <div className="mt-12 bg-white rounded-xl p-6 shadow-sm border border-slate-200">
           <h2 className="text-lg font-semibold text-slate-900 mb-3">How it works</h2>
           <ol className="space-y-2 text-sm text-slate-600 list-decimal list-inside">
-            <li>Hold <strong>X</strong> and speak your question.</li>
+            <li>Press <strong>X</strong> to type a question, or hold <strong>X</strong> to speak one.</li>
             <li>Clippy takes a screenshot and analyzes the page with <a href="https://interfaze.ai" className="text-indigo-600 hover:underline" target="_blank" rel="noopener">interfaze.ai</a>.</li>
             <li>A step-by-step plan appears &mdash; the floating mouse guides you to each button or input.</li>
-            <li>Move your cursor near the target to advance. Clippy re-aligns if you drift away.</li>
-            <li>Hold <strong>X</strong> again anytime to ask a new question (interrupts the current guide).</li>
+            <li>Click near the target to advance. Clippy re-aligns if you drift away.</li>
+            <li>Press or hold <strong>X</strong> again anytime to ask a new question (interrupts the current guide).</li>
           </ol>
         </div>
       </main>

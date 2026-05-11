@@ -142,6 +142,42 @@ export const STYLES = `
   0%, 100% { transform: translateY(0); }
   50% { transform: translateY(-6px); }
 }
+
+.clippy-input-wrap {
+  position: fixed;
+  display: none;
+  z-index: 2147483647;
+  pointer-events: auto;
+}
+
+.clippy-input-wrap input {
+  width: 260px;
+  padding: 10px 14px;
+  border: none;
+  border-radius: 12px;
+  background: #1a1a2e;
+  color: #fff;
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+  font-size: 13px;
+  line-height: 1.4;
+  box-shadow: 0 4px 20px rgba(0,0,0,0.25);
+  outline: none;
+  caret-color: #6366f1;
+}
+
+.clippy-input-wrap input::placeholder {
+  color: rgba(255,255,255,0.4);
+}
+
+.clippy-input-wrap.visible {
+  display: block;
+  animation: clippy-input-in 0.15s ease-out;
+}
+
+@keyframes clippy-input-in {
+  from { opacity: 0; transform: translateY(4px); }
+  to { opacity: 1; transform: translateY(0); }
+}
 `;
 
 export const CURSOR_SVG = `<svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">

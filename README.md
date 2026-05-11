@@ -1,69 +1,167 @@
-# clippy-web
+# Clippy
 
-A floating AI mouse that guides users through any web app. Hold **X** to ask a question by voice, and Clippy moves to each button/input you need to interact with, showing step-by-step instructions.
+AI-powered floating mouse that guides users through your web app. Users press **X** to type a question or hold **X** to speak one — Clippy analyzes the page and walks them through each step with a guided cursor.
 
-## How it works
+Powered by [interfaze.ai](https://interfaze.ai).
 
-1. User holds X and speaks a question ("How do I delete inactive users?")
-2. The widget captures a screenshot + DOM accessibility tree via `html-to-image`
-3. One call to [interfaze.ai](https://interfaze.ai) generates a full step-by-step plan
-4. Clippy animates to each target element with instruction bubbles
-5. After every click/type/scroll, a background re-plan call runs speculatively to stay accurate if the page mutates
+## Get Started
 
-## Quick start
+### 1. Get an API Key
+
+Sign up at [interfaze.ai](https://interfaze.ai) and grab your API key.
+
+### 2. Add the Script
+
+**Via CDN (recommended):**
+
+```html
+<script>
+  window.ClippyWeb = { apiKey: "YOUR_INTERFAZE_API_KEY" };
+</script>
+<script
+  defer
+  src="https://unpkg.com/clippy-web@latest/dist/clippy.min.js"
+></script>
+```
+
+Or use jsdelivr:
+
+```html
+<script>
+  window.ClippyWeb = { apiKey: "YOUR_INTERFAZE_API_KEY" };
+</script>
+<script
+  defer
+  src="https://cdn.jsdelivr.net/npm/clippy-web@latest/dist/clippy.min.js"
+></script>
+```
+
+**Via npm:**
 
 ```bash
-# 1. Install dependencies
-yarn
+npm install clippy-web
+```
 
-# 2. Set your interfaze.ai API key
-cp .env.example .env.local
-# Edit .env.local and add your INTERFAZE_API_KEY
+Then include the script in your HTML and set the API key before it loads.
 
-# 3. Run the dev server (widget auto-builds via predev)
+That's it. Clippy is now active on your page.
+
+## How It Works
+
+1. **Press X** to open a text input, or **hold X** to speak a question
+2. Clippy takes a screenshot, analyzes the page with interfaze.ai, and builds a step-by-step plan
+3. A floating cursor guides the user to each element they need to interact with
+4. Click near the highlighted element to advance to the next step
+5. Press or hold **X** again anytime to ask a new question (interrupts the current guide)
+
+## Framework Examples
+
+### HTML
+
+```html
+<!DOCTYPE html>
+<html>
+  <head>
+    <script>
+      window.ClippyWeb = { apiKey: "YOUR_INTERFAZE_API_KEY" };
+    </script>
+    <script
+      defer
+      src="https://unpkg.com/clippy-web@latest/dist/clippy.min.js"
+    ></script>
+  </head>
+  <body>
+    <!-- your app -->
+  </body>
+</html>
+```
+
+### Next.js (App Router)
+
+```tsx
+// app/layout.tsx
+import Script from "next/script";
+
+export default function RootLayout({
+  children,
+}: {
+  children: React.ReactNode;
+}) {
+  return (
+    <html lang="en">
+      <body>
+        {children}
+        <Script id="clippy-init" strategy="beforeInteractive">
+          {`window.ClippyWeb = { apiKey: "${process.env.NEXT_PUBLIC_INTERFAZE_API_KEY}" };`}
+        </Script>
+        <Script
+          src="https://unpkg.com/clippy-web@latest/dist/clippy.min.js"
+          strategy="afterInteractive"
+        />
+      </body>
+    </html>
+  );
+}
+```
+
+### Next.js (Pages Router)
+
+```tsx
+// pages/_app.tsx
+import type { AppProps } from "next/app";
+import Script from "next/script";
+
+export default function MyApp({ Component, pageProps }: AppProps) {
+  return (
+    <>
+      <Script id="clippy-init" strategy="beforeInteractive">
+        {`window.ClippyWeb = { apiKey: "${process.env.NEXT_PUBLIC_INTERFAZE_API_KEY}" };`}
+      </Script>
+      <Script
+        src="https://unpkg.com/clippy-web@latest/dist/clippy.min.js"
+        strategy="afterInteractive"
+      />
+      <Component {...pageProps} />
+    </>
+  );
+}
+```
+
+## API
+
+### `ClippyWeb.apiKey`
+
+Set your interfaze.ai API key. Must be set **before** the script loads.
+
+```js
+window.ClippyWeb = { apiKey: "your-key" };
+```
+
+### `ClippyWeb.init()`
+
+Manually initialize Clippy. Called automatically on script load — only needed if you want to delay initialization.
+
+```js
+window.ClippyWeb = { apiKey: "your-key" };
+// later...
+ClippyWeb.init();
+```
+
+## Running the Demo App
+
+The repo includes a Next.js demo app with several test pages (auth, table, dashboard, checkout).
+
+```bash
+git clone https://github.com/yoeven/clippy-web.git
+cd clippy-web
+cp .env.example .env
+# Add your NEXT_PUBLIC_INTERFAZE_API_KEY to .env
+yarn install
 yarn dev
 ```
 
-Open [http://localhost:3000](http://localhost:3000) to see the demo pages.
+Open [https://localhost:3000](https://localhost:3000) and press **X** to try it out.
 
-## Demo pages
+## License
 
-| Page | Path | Tests |
-|------|------|-------|
-| Auth | `/auth` | Click flows, mode switching, social login |
-| Table | `/table` | Select-all, row checkboxes, bulk actions, search, filters |
-| Dashboard | `/dashboard` | Tabs, sub-tabs, modal confirmation |
-| Checkout | `/checkout` | Multi-section form, type actions, step navigation |
-
-## Embedding in your own app
-
-Add a single script tag to any HTML page:
-
-```html
-<script src="https://your-host.com/clippy.js" data-clippy-endpoint="https://your-host.com/api/clippy/plan" defer></script>
-```
-
-The widget auto-initializes, mounts in a shadow DOM (no CSS conflicts), and listens for X hold-to-talk.
-
-## Architecture
-
-- **`widget/`** — Self-contained TypeScript bundle (esbuild → `public/clippy.js`)
-  - `cursor.ts` — Shadow-DOM floating mouse + speech bubble + pulse ring
-  - `recorder.ts` — X hold-to-talk via Web Speech API
-  - `snapshot.ts` — Viewport screenshot + full-page DOM tree extraction
-  - `executor.ts` — Step walker with 3-layer verification pipeline
-  - `types.ts` — Shared zod schemas (`PlanSchema`, `StepSchema`)
-- **`app/api/clippy/plan/`** — Next.js route that proxies to interfaze.ai via Vercel AI SDK
-- **`lib/interfaze.ts`** — OpenAI-compatible provider pointed at interfaze.ai
-
-## Efficiency pipeline
-
-1. **Layer 1:** One blocking `generateObject` call per question (screenshot + DOM → full step plan)
-2. **Layer 2:** Post-action local verification via MutationObserver (no API call if DOM is stable)
-3. **Layer 3:** Speculative background re-plan on every click/type/scroll (hides 15s latency behind user interaction time)
-
-## Environment variables
-
-| Variable | Required | Description |
-|----------|----------|-------------|
-| `INTERFAZE_API_KEY` | Yes | Your [interfaze.ai](https://interfaze.ai/dashboard) API key |
+MIT

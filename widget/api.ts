@@ -10,18 +10,19 @@ const PLAN_SYSTEM_PROMPT = `You are a UI guidance assistant. You guide users thr
 Rules:
 - Each step points to ONE element from the domTree using its id.
 - The instruction tells the user what to do with that element (click it, type something into it, etc). The user performs the action themselves.
+- Set completesGoal=true if the last step in your array will fully achieve the user's goal. Set it to false if more steps will be needed after a page change or DOM update.
 - If a step's target has visible=false, instruct the user to scroll to find it. Use the target's rect vs viewport to say which direction.
 - Keep instructions concise and friendly (1-2 short sentences).
-- Don't suggest alternatives, just one direct route to achieve the goal.
-- Plan ALL steps needed to complete the user's goal from start to finish.
-- If a previousPlan is provided, continue from where it left off — do not repeat completed steps.`;
+- Pick ONE direct route to achieve the goal. Do not suggest alternatives.
+- Plan ALL remaining steps needed to complete the user's goal.
+- If a previousPlan is provided, look at the completedSteps to understand what was already done. Do NOT repeat completed actions.`;
 
 const PLAN_JSON_SCHEMA = {
   name: "plan",
   strict: true,
   schema: {
     type: "object",
-    required: ["steps"],
+    required: ["steps", "completesGoal"],
     additionalProperties: false,
     properties: {
       steps: {
@@ -36,6 +37,7 @@ const PLAN_JSON_SCHEMA = {
           },
         },
       },
+      completesGoal: { type: "boolean" },
     },
   },
 };

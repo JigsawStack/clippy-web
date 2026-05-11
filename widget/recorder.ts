@@ -2,26 +2,33 @@ import { transcribeAudio } from "./api";
 
 type RecorderCallback = (transcript: string) => void;
 
+const HOLD_THRESHOLD_MS = 250;
+
 export class Recorder {
   private mediaRecorder: MediaRecorder | null = null;
   private audioChunks: Blob[] = [];
   private stream: MediaStream | null = null;
   private isHolding = false;
   private isRecording = false;
+  private holdTimer: ReturnType<typeof setTimeout> | null = null;
   private onResult: RecorderCallback;
   private onStart: () => void;
   private onStop: () => void;
+  private onTap: () => void;
   private apiKey: string;
+  isTyping = false;
 
   constructor(opts: {
     onResult: RecorderCallback;
     onStart: () => void;
     onStop: () => void;
+    onTap: () => void;
     apiKey: string;
   }) {
     this.onResult = opts.onResult;
     this.onStart = opts.onStart;
     this.onStop = opts.onStop;
+    this.onTap = opts.onTap;
     this.apiKey = opts.apiKey;
     this.setupKeyListeners();
   }
@@ -40,10 +47,15 @@ export class Recorder {
 
   private setupKeyListeners() {
     document.addEventListener("keydown", (e: KeyboardEvent) => {
-      if (e.code === "KeyX" && !e.repeat && !this.isHolding && !this.isInputFocused()) {
+      if (e.code === "KeyX" && !e.repeat && !this.isHolding && !this.isInputFocused() && !this.isTyping) {
         e.preventDefault();
         this.isHolding = true;
-        this.startRecording();
+        this.holdTimer = setTimeout(() => {
+          this.holdTimer = null;
+          if (this.isHolding) {
+            this.startRecording();
+          }
+        }, HOLD_THRESHOLD_MS);
       }
     });
 
@@ -51,13 +63,24 @@ export class Recorder {
       if (e.code === "KeyX" && this.isHolding) {
         e.preventDefault();
         this.isHolding = false;
-        this.stopRecording();
+
+        if (this.holdTimer) {
+          clearTimeout(this.holdTimer);
+          this.holdTimer = null;
+          this.onTap();
+        } else {
+          this.stopRecording();
+        }
       }
     });
 
     window.addEventListener("blur", () => {
       if (this.isHolding) {
         this.isHolding = false;
+        if (this.holdTimer) {
+          clearTimeout(this.holdTimer);
+          this.holdTimer = null;
+        }
         this.stopRecording();
       }
     });

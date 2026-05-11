@@ -169,6 +169,42 @@ var ClippyWeb = (() => {
   0%, 100% { transform: translateY(0); }
   50% { transform: translateY(-6px); }
 }
+
+.clippy-input-wrap {
+  position: fixed;
+  display: none;
+  z-index: 2147483647;
+  pointer-events: auto;
+}
+
+.clippy-input-wrap input {
+  width: 260px;
+  padding: 10px 14px;
+  border: none;
+  border-radius: 12px;
+  background: #1a1a2e;
+  color: #fff;
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+  font-size: 13px;
+  line-height: 1.4;
+  box-shadow: 0 4px 20px rgba(0,0,0,0.25);
+  outline: none;
+  caret-color: #6366f1;
+}
+
+.clippy-input-wrap input::placeholder {
+  color: rgba(255,255,255,0.4);
+}
+
+.clippy-input-wrap.visible {
+  display: block;
+  animation: clippy-input-in 0.15s ease-out;
+}
+
+@keyframes clippy-input-in {
+  from { opacity: 0; transform: translateY(4px); }
+  to { opacity: 1; transform: translateY(0); }
+}
 `;
   var CURSOR_SVG = `<svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
   <path d="M4 1L4 18L8.5 13.5L13.5 22L16.5 20.5L11.5 12H18L4 1Z" fill="#6366f1" stroke="#fff" stroke-width="1.5" stroke-linejoin="round"/>
@@ -187,24 +223,31 @@ var ClippyWeb = (() => {
       this._mode = "idle";
       this.spring = 0.12;
       this.tick = () => {
-        if (this._mode === "idle" || this._mode === "done" || this._mode === "recording" || this._mode === "loading") {
+        if (this._mode === "idle" || this._mode === "done" || this._mode === "recording" || this._mode === "loading" || this._mode === "typing") {
           this.targetX = this.userMouseX + 20;
           this.targetY = this.userMouseY + 20;
         }
         this.curX += (this.targetX - this.curX) * this.spring;
         this.curY += (this.targetY - this.curY) * this.spring;
         this.cursorEl.style.transform = `translate(${this.curX}px, ${this.curY}px)`;
-        const bubbleX = this.curX + 24;
-        const bubbleY = this.curY - 8;
+        const vw = window.innerWidth;
+        const vh = window.innerHeight;
+        const flipX = this.curX + 24 + this.bubbleEl.offsetWidth > vw - 10;
+        let bubbleX = flipX ? this.curX - this.bubbleEl.offsetWidth - 8 : this.curX + 24;
+        let bubbleY = this.curY - 8;
+        if (bubbleY + this.bubbleEl.offsetHeight > vh - 10) {
+          bubbleY = vh - this.bubbleEl.offsetHeight - 10;
+        }
+        if (bubbleY < 10) bubbleY = 10;
         this.bubbleEl.style.left = `${bubbleX}px`;
         this.bubbleEl.style.top = `${bubbleY}px`;
-        if (this.bubbleEl.getBoundingClientRect().right > window.innerWidth - 10) {
-          this.bubbleEl.style.left = `${this.curX - this.bubbleEl.offsetWidth - 8}px`;
-        }
-        this.loadingEl.style.left = `${this.curX + 24}px`;
+        const sideX = flipX ? this.curX - 8 : this.curX + 24;
+        this.loadingEl.style.left = `${flipX ? this.curX - this.loadingEl.offsetWidth - 8 : this.curX + 24}px`;
         this.loadingEl.style.top = `${this.curY + 4}px`;
-        this.micEl.style.left = `${this.curX + 24}px`;
+        this.micEl.style.left = `${flipX ? this.curX - this.micEl.offsetWidth - 8 : this.curX + 24}px`;
         this.micEl.style.top = `${this.curY - 4}px`;
+        this.inputWrapEl.style.left = `${flipX ? this.curX - this.inputWrapEl.offsetWidth - 8 : this.curX + 24}px`;
+        this.inputWrapEl.style.top = `${this.curY - 8}px`;
         this.rafId = requestAnimationFrame(this.tick);
       };
       const host = document.createElement("div");
@@ -234,6 +277,13 @@ var ClippyWeb = (() => {
       this.loadingEl.innerHTML = '<span class="clippy-loading-dot"></span><span class="clippy-loading-dot"></span><span class="clippy-loading-dot"></span>';
       this.loadingEl.style.display = "none";
       this.shadow.appendChild(this.loadingEl);
+      this.inputWrapEl = document.createElement("div");
+      this.inputWrapEl.className = "clippy-input-wrap";
+      this.inputEl = document.createElement("input");
+      this.inputEl.type = "text";
+      this.inputEl.placeholder = "Type your question and press Enter\u2026";
+      this.inputWrapEl.appendChild(this.inputEl);
+      this.shadow.appendChild(this.inputWrapEl);
       document.body.appendChild(host);
       document.addEventListener("mousemove", (e) => {
         this.userMouseX = e.clientX;
@@ -258,6 +308,9 @@ var ClippyWeb = (() => {
       this._mode = mode;
       this.micEl.style.display = mode === "recording" ? "block" : "none";
       this.loadingEl.style.display = "none";
+      if (mode !== "typing") {
+        this.hideInput();
+      }
       if (mode === "recording" || mode === "idle") {
         this.hideBubble();
         this.hidePulse();
@@ -296,7 +349,7 @@ var ClippyWeb = (() => {
       this.pulseEl.style.display = "none";
     }
     showDone() {
-      this.showBubble("Done \u2014 anything else? (hold X to ask)");
+      this.showBubble("Done \u2014 anything else? (press X to type, hold to speak)");
       this._mode = "done";
       setTimeout(() => {
         if (this._mode === "done") {
@@ -304,6 +357,53 @@ var ClippyWeb = (() => {
           this.setMode("idle");
         }
       }, 5e3);
+    }
+    showInput(onSubmit, onCancel) {
+      this._mode = "typing";
+      this.micEl.style.display = "none";
+      this.loadingEl.style.display = "none";
+      this.hideBubble();
+      this.hidePulse();
+      this.inputEl.value = "";
+      this.inputWrapEl.classList.add("visible");
+      requestAnimationFrame(() => this.inputEl.focus());
+      const cleanup = () => {
+        this.inputEl.removeEventListener("keydown", onKey);
+        this.inputEl.removeEventListener("blur", onBlur);
+      };
+      const onKey = (e) => {
+        if (e.key === "Enter") {
+          e.preventDefault();
+          const text = this.inputEl.value.trim();
+          cleanup();
+          this.hideInput();
+          if (text) {
+            onSubmit(text);
+          } else {
+            onCancel();
+          }
+        } else if (e.key === "Escape") {
+          e.preventDefault();
+          cleanup();
+          this.hideInput();
+          onCancel();
+        }
+      };
+      const onBlur = () => {
+        setTimeout(() => {
+          if (this._mode === "typing") {
+            cleanup();
+            this.hideInput();
+            onCancel();
+          }
+        }, 150);
+      };
+      this.inputEl.addEventListener("keydown", onKey);
+      this.inputEl.addEventListener("blur", onBlur);
+    }
+    hideInput() {
+      this.inputWrapEl.classList.remove("visible");
+      this.inputEl.blur();
     }
     destroy() {
       cancelAnimationFrame(this.rafId);
@@ -11635,8 +11735,8 @@ var ClippyWeb = (() => {
     const ch = new $ZodCheck({ check: "describe" });
     ch._zod.onattach = [
       (inst) => {
-        const existing = globalRegistry.get(inst) ?? {};
-        globalRegistry.add(inst, { ...existing, description });
+        const existing2 = globalRegistry.get(inst) ?? {};
+        globalRegistry.add(inst, { ...existing2, description });
       }
     ];
     ch._zod.check = () => {
@@ -11648,8 +11748,8 @@ var ClippyWeb = (() => {
     const ch = new $ZodCheck({ check: "meta" });
     ch._zod.onattach = [
       (inst) => {
-        const existing = globalRegistry.get(inst) ?? {};
-        globalRegistry.add(inst, { ...existing, ...metadata });
+        const existing2 = globalRegistry.get(inst) ?? {};
+        globalRegistry.add(inst, { ...existing2, ...metadata });
       }
     ];
     ch._zod.check = () => {
@@ -11809,8 +11909,8 @@ var ClippyWeb = (() => {
     for (const entry of ctx.seen.entries()) {
       const id = ctx.metadataRegistry.get(entry[0])?.id;
       if (id) {
-        const existing = idToSchema.get(id);
-        if (existing && existing !== entry[0]) {
+        const existing2 = idToSchema.get(id);
+        if (existing2 && existing2 !== entry[0]) {
           throw new Error(`Duplicate schema id "${id}" detected during JSON Schema conversion. Two different schemas cannot share the same id when converted together.`);
         }
         idToSchema.set(id, entry[0]);
@@ -14833,10 +14933,12 @@ Set the \`cycles\` parameter to \`"ref"\` to resolve cyclical schemas with defs.
   // widget/types.ts
   var StepSchema = external_exports.object({
     targetId: external_exports.string(),
-    instruction: external_exports.string(),
+    instruction: external_exports.string()
+  });
+  var PlanSchema = external_exports.object({
+    steps: external_exports.array(StepSchema),
     completesGoal: external_exports.boolean()
   });
-  var PlanSchema = external_exports.object({ steps: external_exports.array(StepSchema) });
   var CLOSE_RADIUS = 150;
   var FAR_RADIUS = 400;
   var FAR_TIMEOUT = 1500;
@@ -15810,17 +15912,18 @@ Set the \`cycles\` parameter to \`"ref"\` to resolve cyclical schemas with defs.
 Rules:
 - Each step points to ONE element from the domTree using its id.
 - The instruction tells the user what to do with that element (click it, type something into it, etc). The user performs the action themselves.
+- Set completesGoal=true if the last step in your array will fully achieve the user's goal. Set it to false if more steps will be needed after a page change or DOM update.
 - If a step's target has visible=false, instruct the user to scroll to find it. Use the target's rect vs viewport to say which direction.
 - Keep instructions concise and friendly (1-2 short sentences).
-- Don't suggest alternatives, just one direct route to achieve the goal.
-- Plan ALL steps needed to complete the user's goal from start to finish.
-- If a previousPlan is provided, continue from where it left off \u2014 do not repeat completed steps.`;
+- Pick ONE direct route to achieve the goal. Do not suggest alternatives.
+- Plan ALL remaining steps needed to complete the user's goal.
+- If a previousPlan is provided, look at the completedSteps to understand what was already done. Do NOT repeat completed actions.`;
   var PLAN_JSON_SCHEMA = {
     name: "plan",
     strict: true,
     schema: {
       type: "object",
-      required: ["steps"],
+      required: ["steps", "completesGoal"],
       additionalProperties: false,
       properties: {
         steps: {
@@ -15834,7 +15937,8 @@ Rules:
               instruction: { type: "string" }
             }
           }
-        }
+        },
+        completesGoal: { type: "boolean" }
       }
     }
   };
@@ -15975,6 +16079,7 @@ Rules:
   }
 
   // widget/recorder.ts
+  var HOLD_THRESHOLD_MS = 250;
   var Recorder = class {
     constructor(opts) {
       this.mediaRecorder = null;
@@ -15982,9 +16087,12 @@ Rules:
       this.stream = null;
       this.isHolding = false;
       this.isRecording = false;
+      this.holdTimer = null;
+      this.isTyping = false;
       this.onResult = opts.onResult;
       this.onStart = opts.onStart;
       this.onStop = opts.onStop;
+      this.onTap = opts.onTap;
       this.apiKey = opts.apiKey;
       this.setupKeyListeners();
     }
@@ -15996,22 +16104,37 @@ Rules:
     }
     setupKeyListeners() {
       document.addEventListener("keydown", (e) => {
-        if (e.code === "KeyX" && !e.repeat && !this.isHolding && !this.isInputFocused()) {
+        if (e.code === "KeyX" && !e.repeat && !this.isHolding && !this.isInputFocused() && !this.isTyping) {
           e.preventDefault();
           this.isHolding = true;
-          this.startRecording();
+          this.holdTimer = setTimeout(() => {
+            this.holdTimer = null;
+            if (this.isHolding) {
+              this.startRecording();
+            }
+          }, HOLD_THRESHOLD_MS);
         }
       });
       document.addEventListener("keyup", (e) => {
         if (e.code === "KeyX" && this.isHolding) {
           e.preventDefault();
           this.isHolding = false;
-          this.stopRecording();
+          if (this.holdTimer) {
+            clearTimeout(this.holdTimer);
+            this.holdTimer = null;
+            this.onTap();
+          } else {
+            this.stopRecording();
+          }
         }
       });
       window.addEventListener("blur", () => {
         if (this.isHolding) {
           this.isHolding = false;
+          if (this.holdTimer) {
+            clearTimeout(this.holdTimer);
+            this.holdTimer = null;
+          }
           this.stopRecording();
         }
       });
@@ -16159,11 +16282,9 @@ Rules:
           }
           this.completedSteps.push(step);
           this.stepIndex++;
-          if (step.completesGoal) break;
         }
         if (sid !== this.sessionId) return;
-        const lastStep = this.completedSteps[this.completedSteps.length - 1];
-        if (lastStep?.completesGoal) break;
+        if (this.currentPlan?.completesGoal) break;
         await this.waitForDomQuiet(sid);
         if (sid !== this.sessionId) return;
         const continuePlan = await this.replan(question, sid);
@@ -16197,13 +16318,18 @@ Rules:
         if (!found || sid !== this.sessionId) return false;
       }
       const freshRect = el.getBoundingClientRect();
-      const cx = freshRect.left + freshRect.width / 2;
-      const cy = freshRect.top + freshRect.height / 2;
+      const elCx = freshRect.left + freshRect.width / 2;
+      const elCy = freshRect.top + freshRect.height / 2;
+      const spaceRight = window.innerWidth - freshRect.right;
+      const spaceLeft = freshRect.left;
+      const nudge = 10;
+      const cursorX = spaceRight > spaceLeft ? elCx + nudge : elCx - nudge;
+      const cursorY = elCy;
       this.cursor.setMode("guiding");
-      this.cursor.moveTo(cx, cy);
+      this.cursor.moveTo(cursorX, cursorY);
       this.cursor.showBubble(step.instruction);
       this.cursor.showPulse(freshRect);
-      const reached = await this.waitForClickNear(cx, cy, step, sid, el);
+      const reached = await this.waitForClickNear(elCx, elCy, step, sid, el);
       if (sid !== this.sessionId) return false;
       if (!reached) return false;
       await this.waitForDomQuiet(sid);
@@ -16302,7 +16428,9 @@ Rules:
             if (Math.abs(newTx - tx) > 2 || Math.abs(newTy - ty) > 2) {
               tx = newTx;
               ty = newTy;
-              this.cursor.moveTo(tx, ty);
+              const sr = window.innerWidth - r.right;
+              const sl = r.left;
+              this.cursor.moveTo(sr > sl ? tx + 10 : tx - 10, ty);
               this.cursor.showPulse(r);
             }
           }
@@ -16314,7 +16442,14 @@ Rules:
               farTimer = setTimeout(() => {
                 hasNudged = true;
                 farTimer = null;
-                this.cursor.moveTo(tx, ty);
+                if (targetEl) {
+                  const r = targetEl.getBoundingClientRect();
+                  const sr = window.innerWidth - r.right;
+                  const sl = r.left;
+                  this.cursor.moveTo(sr > sl ? tx + 10 : tx - 10, ty);
+                } else {
+                  this.cursor.moveTo(tx, ty);
+                }
                 this.cursor.showBubble(`Over here! ${step.instruction}`);
               }, FAR_TIMEOUT);
             }
@@ -16428,6 +16563,22 @@ Rules:
             this.cursor.showLoading();
           }
         },
+        onTap: () => {
+          if (this.isProcessing) {
+            this.executor.cancel();
+          }
+          this.recorder.isTyping = true;
+          this.cursor.showInput(
+            (text) => {
+              this.recorder.isTyping = false;
+              this.handleTranscript(text);
+            },
+            () => {
+              this.recorder.isTyping = false;
+              this.cursor.setMode("idle");
+            }
+          );
+        },
         apiKey: config2.apiKey
       });
     }
@@ -16449,21 +16600,28 @@ Rules:
       this.cursor.destroy();
     }
   };
-  function autoInit() {
-    if (typeof document === "undefined") return;
-    const init = () => {
-      const script = document.querySelector("script[data-clippy-api-key]") || document.currentScript;
-      const apiKey = script?.getAttribute("data-clippy-api-key") || "";
-      if (!apiKey) {
-        console.warn("[clippy] No API key provided. Add data-clippy-api-key to the script tag.");
+  var existing = window.ClippyWeb || {};
+  var ClippyWeb = {
+    apiKey: existing.apiKey || "",
+    _instance: null,
+    init() {
+      if (typeof document === "undefined") return;
+      if (this._instance) return;
+      if (!this.apiKey) {
+        console.warn("[clippy] No API key provided. Set ClippyWeb.apiKey before loading clippy.js.");
         return;
       }
-      window.__clippy = new Clippy({ apiKey });
-    };
+      this._instance = new Clippy({ apiKey: this.apiKey });
+    }
+  };
+  window.ClippyWeb = ClippyWeb;
+  function autoInit() {
+    if (typeof document === "undefined") return;
+    const boot = () => ClippyWeb.init();
     if (document.readyState === "loading") {
-      document.addEventListener("DOMContentLoaded", init);
+      document.addEventListener("DOMContentLoaded", boot);
     } else {
-      init();
+      boot();
     }
   }
   autoInit();

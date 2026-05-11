@@ -26,6 +26,22 @@ export class Clippy {
           this.cursor.showLoading();
         }
       },
+      onTap: () => {
+        if (this.isProcessing) {
+          this.executor.cancel();
+        }
+        this.recorder.isTyping = true;
+        this.cursor.showInput(
+          (text) => {
+            this.recorder.isTyping = false;
+            this.handleTranscript(text);
+          },
+          () => {
+            this.recorder.isTyping = false;
+            this.cursor.setMode("idle");
+          }
+        );
+      },
       apiKey: config.apiKey,
     });
   }
@@ -50,28 +66,36 @@ export class Clippy {
   }
 }
 
-function autoInit() {
-  if (typeof document === "undefined") return;
+const existing = (window as any).ClippyWeb || {};
 
-  const init = () => {
-    const script =
-      document.querySelector<HTMLScriptElement>("script[data-clippy-api-key]") ||
-      document.currentScript as HTMLScriptElement | null;
+const ClippyWeb: { apiKey: string; _instance: Clippy | null; init: () => void } = {
+  apiKey: existing.apiKey || "",
+  _instance: null,
 
-    const apiKey = script?.getAttribute("data-clippy-api-key") || "";
+  init() {
+    if (typeof document === "undefined") return;
+    if (this._instance) return;
 
-    if (!apiKey) {
-      console.warn("[clippy] No API key provided. Add data-clippy-api-key to the script tag.");
+    if (!this.apiKey) {
+      console.warn("[clippy] No API key provided. Set ClippyWeb.apiKey before loading clippy.js.");
       return;
     }
 
-    (window as any).__clippy = new Clippy({ apiKey });
-  };
+    this._instance = new Clippy({ apiKey: this.apiKey });
+  },
+};
+
+(window as any).ClippyWeb = ClippyWeb;
+
+function autoInit() {
+  if (typeof document === "undefined") return;
+
+  const boot = () => ClippyWeb.init();
 
   if (document.readyState === "loading") {
-    document.addEventListener("DOMContentLoaded", init);
+    document.addEventListener("DOMContentLoaded", boot);
   } else {
-    init();
+    boot();
   }
 }
 

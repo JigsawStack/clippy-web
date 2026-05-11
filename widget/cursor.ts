@@ -1,6 +1,6 @@
 import { STYLES, CURSOR_SVG } from "./styles";
 
-export type CursorMode = "idle" | "guiding" | "loading" | "recording" | "done";
+export type CursorMode = "idle" | "guiding" | "loading" | "recording" | "typing" | "done";
 
 export class ClippyCursor {
   private shadow: ShadowRoot;
@@ -9,6 +9,8 @@ export class ClippyCursor {
   private pulseEl: HTMLDivElement;
   private micEl: HTMLDivElement;
   private loadingEl: HTMLDivElement;
+  private inputWrapEl: HTMLDivElement;
+  private inputEl: HTMLInputElement;
 
   private curX = 0;
   private curY = 0;
@@ -56,6 +58,14 @@ export class ClippyCursor {
     this.loadingEl.style.display = "none";
     this.shadow.appendChild(this.loadingEl);
 
+    this.inputWrapEl = document.createElement("div");
+    this.inputWrapEl.className = "clippy-input-wrap";
+    this.inputEl = document.createElement("input");
+    this.inputEl.type = "text";
+    this.inputEl.placeholder = "Type your question and press Enter…";
+    this.inputWrapEl.appendChild(this.inputEl);
+    this.shadow.appendChild(this.inputWrapEl);
+
     document.body.appendChild(host);
 
     document.addEventListener("mousemove", (e) => {
@@ -87,6 +97,9 @@ export class ClippyCursor {
     this._mode = mode;
     this.micEl.style.display = mode === "recording" ? "block" : "none";
     this.loadingEl.style.display = "none";
+    if (mode !== "typing") {
+      this.hideInput();
+    }
     if (mode === "recording" || mode === "idle") {
       this.hideBubble();
       this.hidePulse();
@@ -135,7 +148,7 @@ export class ClippyCursor {
   }
 
   showDone() {
-    this.showBubble("Done — anything else? (hold X to ask)");
+    this.showBubble("Done — anything else? (press X to type, hold to speak)");
     this._mode = "done";
     setTimeout(() => {
       if (this._mode === "done") {
@@ -145,8 +158,63 @@ export class ClippyCursor {
     }, 5000);
   }
 
+  showInput(onSubmit: (text: string) => void, onCancel: () => void) {
+    this._mode = "typing";
+    this.micEl.style.display = "none";
+    this.loadingEl.style.display = "none";
+    this.hideBubble();
+    this.hidePulse();
+
+    this.inputEl.value = "";
+    this.inputWrapEl.classList.add("visible");
+
+    requestAnimationFrame(() => this.inputEl.focus());
+
+    const cleanup = () => {
+      this.inputEl.removeEventListener("keydown", onKey);
+      this.inputEl.removeEventListener("blur", onBlur);
+    };
+
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Enter") {
+        e.preventDefault();
+        const text = this.inputEl.value.trim();
+        cleanup();
+        this.hideInput();
+        if (text) {
+          onSubmit(text);
+        } else {
+          onCancel();
+        }
+      } else if (e.key === "Escape") {
+        e.preventDefault();
+        cleanup();
+        this.hideInput();
+        onCancel();
+      }
+    };
+
+    const onBlur = () => {
+      setTimeout(() => {
+        if (this._mode === "typing") {
+          cleanup();
+          this.hideInput();
+          onCancel();
+        }
+      }, 150);
+    };
+
+    this.inputEl.addEventListener("keydown", onKey);
+    this.inputEl.addEventListener("blur", onBlur);
+  }
+
+  hideInput() {
+    this.inputWrapEl.classList.remove("visible");
+    this.inputEl.blur();
+  }
+
   private tick = () => {
-    if (this._mode === "idle" || this._mode === "done" || this._mode === "recording" || this._mode === "loading") {
+    if (this._mode === "idle" || this._mode === "done" || this._mode === "recording" || this._mode === "loading" || this._mode === "typing") {
       this.targetX = this.userMouseX + 20;
       this.targetY = this.userMouseY + 20;
     }
@@ -156,20 +224,28 @@ export class ClippyCursor {
 
     this.cursorEl.style.transform = `translate(${this.curX}px, ${this.curY}px)`;
 
-    const bubbleX = this.curX + 24;
-    const bubbleY = this.curY - 8;
+    const vw = window.innerWidth;
+    const vh = window.innerHeight;
+    const flipX = this.curX + 24 + this.bubbleEl.offsetWidth > vw - 10;
+
+    let bubbleX = flipX ? this.curX - this.bubbleEl.offsetWidth - 8 : this.curX + 24;
+    let bubbleY = this.curY - 8;
+    if (bubbleY + this.bubbleEl.offsetHeight > vh - 10) {
+      bubbleY = vh - this.bubbleEl.offsetHeight - 10;
+    }
+    if (bubbleY < 10) bubbleY = 10;
     this.bubbleEl.style.left = `${bubbleX}px`;
     this.bubbleEl.style.top = `${bubbleY}px`;
 
-    if (this.bubbleEl.getBoundingClientRect().right > window.innerWidth - 10) {
-      this.bubbleEl.style.left = `${this.curX - this.bubbleEl.offsetWidth - 8}px`;
-    }
-
-    this.loadingEl.style.left = `${this.curX + 24}px`;
+    const sideX = flipX ? this.curX - 8 : this.curX + 24;
+    this.loadingEl.style.left = `${flipX ? this.curX - this.loadingEl.offsetWidth - 8 : this.curX + 24}px`;
     this.loadingEl.style.top = `${this.curY + 4}px`;
 
-    this.micEl.style.left = `${this.curX + 24}px`;
+    this.micEl.style.left = `${flipX ? this.curX - this.micEl.offsetWidth - 8 : this.curX + 24}px`;
     this.micEl.style.top = `${this.curY - 4}px`;
+
+    this.inputWrapEl.style.left = `${flipX ? this.curX - this.inputWrapEl.offsetWidth - 8 : this.curX + 24}px`;
+    this.inputWrapEl.style.top = `${this.curY - 8}px`;
 
     this.rafId = requestAnimationFrame(this.tick);
   };

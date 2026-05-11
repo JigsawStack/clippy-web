@@ -3,10 +3,12 @@ import { z } from "zod";
 export const StepSchema = z.object({
   targetId: z.string(),
   instruction: z.string(),
-  completesGoal: z.boolean(),
 });
 
-export const PlanSchema = z.object({ steps: z.array(StepSchema) });
+export const PlanSchema = z.object({
+  steps: z.array(StepSchema),
+  completesGoal: z.boolean(),
+});
 
 export type Step = z.infer<typeof StepSchema>;
 export type Plan = z.infer<typeof PlanSchema>;

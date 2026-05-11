@@ -30,11 +30,10 @@ export default function RootLayout({
     >
       <body className="min-h-full flex flex-col">
         {children}
-        <Script
-          src="/clippy.js"
-          data-clippy-api-key={process.env.NEXT_PUBLIC_INTERFAZE_API_KEY || ""}
-          strategy="afterInteractive"
-        />
+        <Script id="clippy-init" strategy="beforeInteractive">
+          {`window.ClippyWeb = window.ClippyWeb || {}; window.ClippyWeb.apiKey = "${process.env.NEXT_PUBLIC_INTERFAZE_API_KEY || ""}";`}
+        </Script>
+        <Script src="/clippy.js" strategy="afterInteractive" />
       </body>
     </html>
   );

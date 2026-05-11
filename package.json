@@ -1,9 +1,16 @@
 {
   "name": "clippy-web",
-  "version": "0.1.0",
-  "private": true,
+  "version": "1.0.0",
+  "description": "AI-powered floating mouse that guides users through your web app",
+  "main": "dist/clippy.js",
+  "unpkg": "dist/clippy.min.js",
+  "jsdelivr": "dist/clippy.min.js",
+  "files": [
+    "dist"
+  ],
   "scripts": {
     "build:widget": "tsx scripts/build-widget.ts",
+    "prepublishOnly": "yarn build:widget",
     "predev": "yarn build:widget",
     "dev": "next dev --turbopack --experimental-https",
     "prebuild": "yarn build:widget",

@@ -83,14 +83,10 @@ export class Executor {
 
         this.completedSteps.push(step);
         this.stepIndex++;
-
-        if (step.completesGoal) break;
       }
 
       if (sid !== this.sessionId) return;
-
-      const lastStep = this.completedSteps[this.completedSteps.length - 1];
-      if (lastStep?.completesGoal) break;
+      if (this.currentPlan?.completesGoal) break;
 
       await this.waitForDomQuiet(sid);
       if (sid !== this.sessionId) return;
@@ -138,15 +134,21 @@ export class Executor {
     }
 
     const freshRect = el.getBoundingClientRect();
-    const cx = freshRect.left + freshRect.width / 2;
-    const cy = freshRect.top + freshRect.height / 2;
+    const elCx = freshRect.left + freshRect.width / 2;
+    const elCy = freshRect.top + freshRect.height / 2;
+
+    const spaceRight = window.innerWidth - freshRect.right;
+    const spaceLeft = freshRect.left;
+    const nudge = 10;
+    const cursorX = spaceRight > spaceLeft ? elCx + nudge : elCx - nudge;
+    const cursorY = elCy;
 
     this.cursor.setMode("guiding");
-    this.cursor.moveTo(cx, cy);
+    this.cursor.moveTo(cursorX, cursorY);
     this.cursor.showBubble(step.instruction);
     this.cursor.showPulse(freshRect);
 
-    const reached = await this.waitForClickNear(cx, cy, step, sid, el);
+    const reached = await this.waitForClickNear(elCx, elCy, step, sid, el);
     if (sid !== this.sessionId) return false;
     if (!reached) return false;
 
@@ -282,7 +284,9 @@ export class Executor {
           if (Math.abs(newTx - tx) > 2 || Math.abs(newTy - ty) > 2) {
             tx = newTx;
             ty = newTy;
-            this.cursor.moveTo(tx, ty);
+            const sr = window.innerWidth - r.right;
+            const sl = r.left;
+            this.cursor.moveTo(sr > sl ? tx + 10 : tx - 10, ty);
             this.cursor.showPulse(r);
           }
         }
@@ -296,7 +300,14 @@ export class Executor {
             farTimer = setTimeout(() => {
               hasNudged = true;
               farTimer = null;
-              this.cursor.moveTo(tx, ty);
+              if (targetEl) {
+                const r = targetEl.getBoundingClientRect();
+                const sr = window.innerWidth - r.right;
+                const sl = r.left;
+                this.cursor.moveTo(sr > sl ? tx + 10 : tx - 10, ty);
+              } else {
+                this.cursor.moveTo(tx, ty);
+              }
               this.cursor.showBubble(`Over here! ${step.instruction}`);
             }, FAR_TIMEOUT);
           }
