@@ -47,7 +47,7 @@ function getAccessibleName(el: Element): string {
   if (title) return title;
 
   const text = el.textContent?.trim() || "";
-  return text.length > 80 ? text.slice(0, 80) + "…" : text;
+  return text.length > 50 ? text.slice(0, 50) + "…" : text;
 }
 
 const ROLE_MAP: Record<string, string> = {
@@ -86,6 +86,8 @@ function isInViewport(rect: DOMRect, vw: number, vh: number): boolean {
   );
 }
 
+const MAX_DOM_NODES = 100;
+
 export function buildDomTree(): { domTree: DomNode[]; cleanup: () => void } {
   const vw = window.innerWidth;
   const vh = window.innerHeight;
@@ -93,8 +95,8 @@ export function buildDomTree(): { domTree: DomNode[]; cleanup: () => void } {
   const scrollY = window.scrollY;
 
   const elements = document.querySelectorAll(INTERACTIVE_SELECTOR);
-  const nodes: DomNode[] = [];
-  const stamped: { el: Element; attr: string | null }[] = [];
+  const visible: { el: Element; rect: DOMRect }[] = [];
+  const offscreen: { el: Element; rect: DOMRect }[] = [];
 
   elements.forEach((el) => {
     if (el.closest("#clippy-web-host")) return;
@@ -105,6 +107,18 @@ export function buildDomTree(): { domTree: DomNode[]; cleanup: () => void } {
     const clientRect = el.getBoundingClientRect();
     if (clientRect.width === 0 && clientRect.height === 0) return;
 
+    if (isInViewport(clientRect, vw, vh)) {
+      visible.push({ el, rect: clientRect });
+    } else {
+      offscreen.push({ el, rect: clientRect });
+    }
+  });
+
+  const candidates = [...visible, ...offscreen].slice(0, MAX_DOM_NODES);
+  const nodes: DomNode[] = [];
+  const stamped: { el: Element; attr: string | null }[] = [];
+
+  for (const { el, rect } of candidates) {
     const id = `clippy-${nextClippyId++}`;
     const prevAttr = el.getAttribute("data-clippy-id");
     el.setAttribute("data-clippy-id", id);
@@ -115,14 +129,14 @@ export function buildDomTree(): { domTree: DomNode[]; cleanup: () => void } {
       role: getRole(el),
       name: getAccessibleName(el),
       rect: {
-        x: Math.round(clientRect.left + scrollX),
-        y: Math.round(clientRect.top + scrollY),
-        w: Math.round(clientRect.width),
-        h: Math.round(clientRect.height),
+        x: Math.round(rect.left + scrollX),
+        y: Math.round(rect.top + scrollY),
+        w: Math.round(rect.width),
+        h: Math.round(rect.height),
       },
-      visible: isInViewport(clientRect, vw, vh),
+      visible: isInViewport(rect, vw, vh),
     });
-  });
+  }
 
   const cleanup = () => {
     stamped.forEach(({ el, attr }) => {
@@ -137,13 +151,18 @@ export function buildDomTree(): { domTree: DomNode[]; cleanup: () => void } {
   return { domTree: nodes, cleanup };
 }
 
+const MAX_SCREENSHOT_WIDTH = 1280;
+const SCREENSHOT_QUALITY = 0.6;
+
 export async function takeScreenshot(): Promise<{
   screenshot: string;
   screenshotKind: "viewport" | "fullpage";
 }> {
   const docHeight = document.documentElement.scrollHeight;
+  const vpWidth = window.innerWidth;
   const vpHeight = window.innerHeight;
   const useFullPage = docHeight <= vpHeight * 2;
+  const scale = vpWidth > MAX_SCREENSHOT_WIDTH ? MAX_SCREENSHOT_WIDTH / vpWidth : 1;
 
   const clippyHost = document.getElementById("clippy-web-host");
   const filterFn = (node: HTMLElement) => {
@@ -158,17 +177,17 @@ export async function takeScreenshot(): Promise<{
         width: document.documentElement.scrollWidth,
         height: docHeight,
         filter: filterFn,
-        quality: 0.8,
-        pixelRatio: 1,
+        quality: SCREENSHOT_QUALITY,
+        pixelRatio: scale,
       });
       return { screenshot: dataUrl, screenshotKind: "fullpage" };
     } else {
       const dataUrl = await toPng(document.documentElement, {
-        width: window.innerWidth,
+        width: vpWidth,
         height: vpHeight,
         filter: filterFn,
-        quality: 0.8,
-        pixelRatio: 1,
+        quality: SCREENSHOT_QUALITY,
+        pixelRatio: scale,
         style: {
           transform: `translate(-${window.scrollX}px, -${window.scrollY}px)`,
         },

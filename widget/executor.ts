@@ -93,7 +93,10 @@ export class Executor {
 
       const navigated = location.href !== lastUrl;
       if (navigated) {
-        await this.waitForPageReady(sid, countInteractiveElements());
+        this.cursor.hidePulse();
+        this.cursor.hideBubble();
+        this.cursor.setMode("loading");
+        await this.waitForPageReady(sid);
       } else {
         await this.waitForDomQuiet(sid);
       }
@@ -163,16 +166,19 @@ export class Executor {
     if (sid !== this.sessionId) return false;
     if (!reached) return false;
 
+    this.cursor.hidePulse();
+    this.cursor.hideBubble();
+
     await this.sleep(150, sid);
     if (sid !== this.sessionId) return false;
 
     const navigated = location.href !== urlBefore;
     if (navigated) {
+      this.cursor.setMode("loading");
       await this.waitForPageReady(sid, countBefore);
     } else {
       await this.waitForDomQuiet(sid);
     }
-    this.cursor.hidePulse();
 
     return sid === this.sessionId;
   }
@@ -344,48 +350,56 @@ export class Executor {
     });
   }
 
-  private waitForPageReady(sid: number, countBefore = 0): Promise<void> {
+  private waitForPageReady(sid: number, _countBefore = 0): Promise<void> {
     const MIN_ELEMENTS = 3;
-    const STABLE_MS = 1000;
+    const STABLE_MS = 800;
     const MAX_WAIT = 15000;
 
     return new Promise((resolve) => {
       let done = false;
-      let contentChanged = false;
-      let lastCount = 0;
+      let lastCount = -1;
       let stableSince = 0;
+      let mutationsSeen = false;
 
       const finish = () => {
         if (done) return;
         done = true;
+        observer.disconnect();
         clearInterval(poll);
         clearTimeout(maxTimer);
         resolve();
       };
+
+      const observer = new MutationObserver(() => {
+        mutationsSeen = true;
+        stableSince = 0;
+      });
+
+      observer.observe(document.body, {
+        childList: true,
+        subtree: true,
+        attributes: true,
+      });
 
       const poll = setInterval(() => {
         if (sid !== this.sessionId) { finish(); return; }
 
         const count = countInteractiveElements();
 
-        if (!contentChanged) {
-          if (count !== countBefore) {
-            contentChanged = true;
-            lastCount = count;
-            stableSince = count >= MIN_ELEMENTS ? Date.now() : 0;
-          }
-          return;
-        }
-
         if (count !== lastCount) {
           lastCount = count;
-          stableSince = count >= MIN_ELEMENTS ? Date.now() : 0;
+          stableSince = 0;
+          mutationsSeen = true;
+        }
+
+        if (!stableSince && mutationsSeen && count >= MIN_ELEMENTS) {
+          stableSince = Date.now();
         }
 
         if (stableSince > 0 && Date.now() - stableSince >= STABLE_MS) {
           finish();
         }
-      }, 200);
+      }, 150);
 
       const maxTimer = setTimeout(finish, MAX_WAIT);
     });

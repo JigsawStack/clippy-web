@@ -2,6 +2,8 @@ import type { Plan, Step } from "./types";
 import { PlanSchema } from "./types";
 import { buildDomTree, takeScreenshot, getPageMeta } from "./snapshot";
 
+
+
 const BASE_URL = "https://api.interfaze.ai/v1";
 const MODEL = "interfaze-beta";
 
@@ -55,8 +57,10 @@ export async function fetchPlan(
   apiKey: string,
   opts: FetchPlanOpts,
 ): Promise<{ plan: Plan; cleanup: () => void } | null> {
-  const { domTree, cleanup } = buildDomTree();
-  const { screenshot, screenshotKind } = await takeScreenshot();
+  const [{ domTree, cleanup }, { screenshot, screenshotKind }] = await Promise.all([
+    Promise.resolve(buildDomTree()),
+    takeScreenshot(),
+  ]);
 
   const meta = getPageMeta();
 

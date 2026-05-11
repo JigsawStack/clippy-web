@@ -15753,7 +15753,7 @@ Set the \`cycles\` parameter to \`"ref"\` to resolve cyclical schemas with defs.
     const title = el.getAttribute("title");
     if (title) return title;
     const text = el.textContent?.trim() || "";
-    return text.length > 80 ? text.slice(0, 80) + "\u2026" : text;
+    return text.length > 50 ? text.slice(0, 50) + "\u2026" : text;
   }
   var ROLE_MAP = {
     a: "link",
@@ -15780,20 +15780,31 @@ Set the \`cycles\` parameter to \`"ref"\` to resolve cyclical schemas with defs.
   function isInViewport(rect, vw, vh) {
     return rect.bottom > 0 && rect.top < vh && rect.right > 0 && rect.left < vw;
   }
+  var MAX_DOM_NODES = 100;
   function buildDomTree() {
     const vw = window.innerWidth;
     const vh = window.innerHeight;
     const scrollX = window.scrollX;
     const scrollY = window.scrollY;
     const elements = document.querySelectorAll(INTERACTIVE_SELECTOR);
-    const nodes = [];
-    const stamped = [];
+    const visible = [];
+    const offscreen = [];
     elements.forEach((el) => {
       if (el.closest("#clippy-web-host")) return;
       const style = window.getComputedStyle(el);
       if (style.display === "none" || style.visibility === "hidden") return;
       const clientRect = el.getBoundingClientRect();
       if (clientRect.width === 0 && clientRect.height === 0) return;
+      if (isInViewport(clientRect, vw, vh)) {
+        visible.push({ el, rect: clientRect });
+      } else {
+        offscreen.push({ el, rect: clientRect });
+      }
+    });
+    const candidates = [...visible, ...offscreen].slice(0, MAX_DOM_NODES);
+    const nodes = [];
+    const stamped = [];
+    for (const { el, rect } of candidates) {
       const id = `clippy-${nextClippyId++}`;
       const prevAttr = el.getAttribute("data-clippy-id");
       el.setAttribute("data-clippy-id", id);
@@ -15803,14 +15814,14 @@ Set the \`cycles\` parameter to \`"ref"\` to resolve cyclical schemas with defs.
         role: getRole(el),
         name: getAccessibleName(el),
         rect: {
-          x: Math.round(clientRect.left + scrollX),
-          y: Math.round(clientRect.top + scrollY),
-          w: Math.round(clientRect.width),
-          h: Math.round(clientRect.height)
+          x: Math.round(rect.left + scrollX),
+          y: Math.round(rect.top + scrollY),
+          w: Math.round(rect.width),
+          h: Math.round(rect.height)
         },
-        visible: isInViewport(clientRect, vw, vh)
+        visible: isInViewport(rect, vw, vh)
       });
-    });
+    }
     const cleanup = () => {
       stamped.forEach(({ el, attr }) => {
         if (attr === null) {
@@ -15822,10 +15833,14 @@ Set the \`cycles\` parameter to \`"ref"\` to resolve cyclical schemas with defs.
     };
     return { domTree: nodes, cleanup };
   }
+  var MAX_SCREENSHOT_WIDTH = 1280;
+  var SCREENSHOT_QUALITY = 0.6;
   async function takeScreenshot() {
     const docHeight = document.documentElement.scrollHeight;
+    const vpWidth = window.innerWidth;
     const vpHeight = window.innerHeight;
     const useFullPage = docHeight <= vpHeight * 2;
+    const scale = vpWidth > MAX_SCREENSHOT_WIDTH ? MAX_SCREENSHOT_WIDTH / vpWidth : 1;
     const clippyHost = document.getElementById("clippy-web-host");
     const filterFn = (node) => {
       if (node === clippyHost) return false;
@@ -15838,17 +15853,17 @@ Set the \`cycles\` parameter to \`"ref"\` to resolve cyclical schemas with defs.
           width: document.documentElement.scrollWidth,
           height: docHeight,
           filter: filterFn,
-          quality: 0.8,
-          pixelRatio: 1
+          quality: SCREENSHOT_QUALITY,
+          pixelRatio: scale
         });
         return { screenshot: dataUrl, screenshotKind: "fullpage" };
       } else {
         const dataUrl = await toPng(document.documentElement, {
-          width: window.innerWidth,
+          width: vpWidth,
           height: vpHeight,
           filter: filterFn,
-          quality: 0.8,
-          pixelRatio: 1,
+          quality: SCREENSHOT_QUALITY,
+          pixelRatio: scale,
           style: {
             transform: `translate(-${window.scrollX}px, -${window.scrollY}px)`
           }
@@ -15921,8 +15936,10 @@ Rules:
     }
   };
   async function fetchPlan(apiKey, opts) {
-    const { domTree, cleanup } = buildDomTree();
-    const { screenshot, screenshotKind } = await takeScreenshot();
+    const [{ domTree, cleanup }, { screenshot, screenshotKind }] = await Promise.all([
+      Promise.resolve(buildDomTree()),
+      takeScreenshot()
+    ]);
     const meta3 = getPageMeta();
     const textParts = [
       `Question: ${opts.question}`,
@@ -16274,7 +16291,10 @@ Rules:
         if (this.currentPlan?.completesGoal) break;
         const navigated = location.href !== lastUrl;
         if (navigated) {
-          await this.waitForPageReady(sid, countInteractiveElements());
+          this.cursor.hidePulse();
+          this.cursor.hideBubble();
+          this.cursor.setMode("loading");
+          await this.waitForPageReady(sid);
         } else {
           await this.waitForDomQuiet(sid);
         }
@@ -16326,15 +16346,17 @@ Rules:
       const reached = await this.waitForClickNear(elCx, elCy, step, sid, el);
       if (sid !== this.sessionId) return false;
       if (!reached) return false;
+      this.cursor.hidePulse();
+      this.cursor.hideBubble();
       await this.sleep(150, sid);
       if (sid !== this.sessionId) return false;
       const navigated = location.href !== urlBefore;
       if (navigated) {
+        this.cursor.setMode("loading");
         await this.waitForPageReady(sid, countBefore);
       } else {
         await this.waitForDomQuiet(sid);
       }
-      this.cursor.hidePulse();
       return sid === this.sessionId;
     }
     getScrollDirection(rect, vw, vh) {
@@ -16471,44 +16493,50 @@ Rules:
         rafId = requestAnimationFrame(check2);
       });
     }
-    waitForPageReady(sid, countBefore = 0) {
+    waitForPageReady(sid, _countBefore = 0) {
       const MIN_ELEMENTS = 3;
-      const STABLE_MS = 1e3;
+      const STABLE_MS = 800;
       const MAX_WAIT = 15e3;
       return new Promise((resolve) => {
         let done = false;
-        let contentChanged = false;
-        let lastCount = 0;
+        let lastCount = -1;
         let stableSince = 0;
+        let mutationsSeen = false;
         const finish = () => {
           if (done) return;
           done = true;
+          observer.disconnect();
           clearInterval(poll);
           clearTimeout(maxTimer);
           resolve();
         };
+        const observer = new MutationObserver(() => {
+          mutationsSeen = true;
+          stableSince = 0;
+        });
+        observer.observe(document.body, {
+          childList: true,
+          subtree: true,
+          attributes: true
+        });
         const poll = setInterval(() => {
           if (sid !== this.sessionId) {
             finish();
             return;
           }
           const count = countInteractiveElements();
-          if (!contentChanged) {
-            if (count !== countBefore) {
-              contentChanged = true;
-              lastCount = count;
-              stableSince = count >= MIN_ELEMENTS ? Date.now() : 0;
-            }
-            return;
-          }
           if (count !== lastCount) {
             lastCount = count;
-            stableSince = count >= MIN_ELEMENTS ? Date.now() : 0;
+            stableSince = 0;
+            mutationsSeen = true;
+          }
+          if (!stableSince && mutationsSeen && count >= MIN_ELEMENTS) {
+            stableSince = Date.now();
           }
           if (stableSince > 0 && Date.now() - stableSince >= STABLE_MS) {
             finish();
           }
-        }, 200);
+        }, 150);
         const maxTimer = setTimeout(finish, MAX_WAIT);
       });
     }

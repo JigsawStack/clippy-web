@@ -1,6 +1,6 @@
 {
   "name": "clippy-web",
-  "version": "1.0.2",
+  "version": "1.0.3",
   "description": "AI-powered floating mouse that guides users through your web app",
   "main": "dist/clippy.js",
   "unpkg": "dist/clippy.min.js",
