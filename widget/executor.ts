@@ -4,7 +4,6 @@ import {
   CLOSE_RADIUS,
   FAR_RADIUS,
   FAR_TIMEOUT,
-  MAX_NUDGES,
   DOM_QUIET_MS,
   DOM_QUIET_MAX_MS,
 } from "./types";
@@ -195,43 +194,31 @@ export class Executor {
 
   private waitForScrollIdle(sid: number): Promise<void> {
     return new Promise((resolve) => {
-      let timer: ReturnType<typeof setTimeout> | null = null;
-      let resolved = false;
+      let debounce: ReturnType<typeof setTimeout> | null = null;
+      let done = false;
 
-      const done = () => {
-        if (resolved) return;
-        resolved = true;
+      const finish = () => {
+        if (done) return;
+        done = true;
         window.removeEventListener("scroll", onScroll, true);
+        if (debounce) clearTimeout(debounce);
+        clearTimeout(maxTimer);
+        clearInterval(cancelCheck);
         resolve();
       };
 
       const onScroll = () => {
-        if (timer) clearTimeout(timer);
-        timer = setTimeout(done, 500);
+        if (debounce) clearTimeout(debounce);
+        debounce = setTimeout(finish, 500);
       };
 
       window.addEventListener("scroll", onScroll, { capture: true, passive: true });
 
-      timer = setTimeout(done, 500);
-
-      const maxTimeout = setTimeout(() => {
-        done();
-      }, 10000);
-
-      const checkCancel = setInterval(() => {
-        if (sid !== this.sessionId) {
-          clearInterval(checkCancel);
-          clearTimeout(maxTimeout);
-          done();
-        }
-      }, 100);
-
-      const origResolve = resolve;
-      resolve = (v) => {
-        clearInterval(checkCancel);
-        clearTimeout(maxTimeout);
-        origResolve(v);
-      };
+      debounce = setTimeout(finish, 500);
+      const maxTimer = setTimeout(finish, 10000);
+      const cancelCheck = setInterval(() => {
+        if (sid !== this.sessionId) finish();
+      }, 200);
     });
   }
 
@@ -246,6 +233,7 @@ export class Executor {
       let farTimer: ReturnType<typeof setTimeout> | null = null;
       let hasNudged = false;
       let done = false;
+      let rafId = 0;
       let tx = initialTx;
       let ty = initialTy;
 
@@ -253,9 +241,7 @@ export class Executor {
         if (done) return;
         const dx = e.clientX - tx;
         const dy = e.clientY - ty;
-        const dist = Math.sqrt(dx * dx + dy * dy);
-
-        if (dist < CLOSE_RADIUS) {
+        if (dx * dx + dy * dy < CLOSE_RADIUS * CLOSE_RADIUS) {
           finish(true);
         }
       };
@@ -263,6 +249,7 @@ export class Executor {
       const finish = (result: boolean) => {
         if (done) return;
         done = true;
+        cancelAnimationFrame(rafId);
         document.removeEventListener("click", onClick, true);
         if (farTimer) clearTimeout(farTimer);
         resolve(result);
@@ -272,10 +259,7 @@ export class Executor {
 
       const check = () => {
         if (done) return;
-        if (sid !== this.sessionId) {
-          finish(false);
-          return;
-        }
+        if (sid !== this.sessionId) { finish(false); return; }
 
         if (targetEl) {
           const r = targetEl.getBoundingClientRect();
@@ -293,9 +277,9 @@ export class Executor {
 
         const dx = this.cursor.mouseX - tx;
         const dy = this.cursor.mouseY - ty;
-        const dist = Math.sqrt(dx * dx + dy * dy);
+        const distSq = dx * dx + dy * dy;
 
-        if (dist > FAR_RADIUS && !hasNudged) {
+        if (distSq > FAR_RADIUS * FAR_RADIUS && !hasNudged) {
           if (!farTimer) {
             farTimer = setTimeout(() => {
               hasNudged = true;
@@ -311,7 +295,7 @@ export class Executor {
               this.cursor.showBubble(`Over here! ${step.instruction}`);
             }, FAR_TIMEOUT);
           }
-        } else if (dist <= FAR_RADIUS) {
+        } else if (distSq <= FAR_RADIUS * FAR_RADIUS) {
           hasNudged = false;
           if (farTimer) {
             clearTimeout(farTimer);
@@ -319,10 +303,10 @@ export class Executor {
           }
         }
 
-        requestAnimationFrame(check);
+        rafId = requestAnimationFrame(check);
       };
 
-      requestAnimationFrame(check);
+      rafId = requestAnimationFrame(check);
     });
   }
 

@@ -16,6 +16,9 @@ export class Recorder {
   private onStop: () => void;
   private onTap: () => void;
   private apiKey: string;
+  private handleKeyDown!: (e: KeyboardEvent) => void;
+  private handleKeyUp!: (e: KeyboardEvent) => void;
+  private handleBlur!: () => void;
   isTyping = false;
 
   constructor(opts: {
@@ -46,7 +49,7 @@ export class Recorder {
   }
 
   private setupKeyListeners() {
-    document.addEventListener("keydown", (e: KeyboardEvent) => {
+    this.handleKeyDown = (e: KeyboardEvent) => {
       if (e.code === "KeyX" && !e.repeat && !this.isHolding && !this.isInputFocused() && !this.isTyping) {
         e.preventDefault();
         this.isHolding = true;
@@ -57,9 +60,9 @@ export class Recorder {
           }
         }, HOLD_THRESHOLD_MS);
       }
-    });
+    };
 
-    document.addEventListener("keyup", (e: KeyboardEvent) => {
+    this.handleKeyUp = (e: KeyboardEvent) => {
       if (e.code === "KeyX" && this.isHolding) {
         e.preventDefault();
         this.isHolding = false;
@@ -72,9 +75,9 @@ export class Recorder {
           this.stopRecording();
         }
       }
-    });
+    };
 
-    window.addEventListener("blur", () => {
+    this.handleBlur = () => {
       if (this.isHolding) {
         this.isHolding = false;
         if (this.holdTimer) {
@@ -83,7 +86,11 @@ export class Recorder {
         }
         this.stopRecording();
       }
-    });
+    };
+
+    document.addEventListener("keydown", this.handleKeyDown);
+    document.addEventListener("keyup", this.handleKeyUp);
+    window.addEventListener("blur", this.handleBlur);
   }
 
   private async startRecording() {
@@ -183,5 +190,8 @@ export class Recorder {
     this.isHolding = false;
     this.isRecording = false;
     this.cleanup();
+    document.removeEventListener("keydown", this.handleKeyDown);
+    document.removeEventListener("keyup", this.handleKeyUp);
+    window.removeEventListener("blur", this.handleBlur);
   }
 }

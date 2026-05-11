@@ -50,20 +50,21 @@ function getAccessibleName(el: Element): string {
   return text.length > 80 ? text.slice(0, 80) + "…" : text;
 }
 
+const ROLE_MAP: Record<string, string> = {
+  a: "link",
+  button: "button",
+  input: "input",
+  select: "combobox",
+  textarea: "textbox",
+  label: "label",
+  summary: "button",
+};
+
 function getRole(el: Element): string {
   const explicit = el.getAttribute("role");
   if (explicit) return explicit;
 
   const tag = el.tagName.toLowerCase();
-  const roleMap: Record<string, string> = {
-    a: "link",
-    button: "button",
-    input: "input",
-    select: "combobox",
-    textarea: "textbox",
-    label: "label",
-    summary: "button",
-  };
 
   if (tag === "input") {
     const type = (el as HTMLInputElement).type;
@@ -73,7 +74,7 @@ function getRole(el: Element): string {
     return "textbox";
   }
 
-  return roleMap[tag] || "generic";
+  return ROLE_MAP[tag] || "generic";
 }
 
 function isInViewport(rect: DOMRect, vw: number, vh: number): boolean {

@@ -28,6 +28,5 @@ export interface ClippyConfig {
 export const CLOSE_RADIUS = 150;
 export const FAR_RADIUS = 400;
 export const FAR_TIMEOUT = 1500;
-export const MAX_NUDGES = 3;
 export const DOM_QUIET_MS = 300;
 export const DOM_QUIET_MAX_MS = 3000;

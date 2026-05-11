@@ -1,6 +1,6 @@
 {
   "name": "clippy-web",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "description": "AI-powered floating mouse that guides users through your web app",
   "main": "dist/clippy.js",
   "unpkg": "dist/clippy.min.js",
@@ -18,13 +18,6 @@
     "start": "next start",
     "lint": "eslint"
   },
-  "dependencies": {
-    "html-to-image": "^1.11.13",
-    "next": "16.2.6",
-    "react": "19.2.4",
-    "react-dom": "19.2.4",
-    "zod": "^4.4.3"
-  },
   "devDependencies": {
     "@tailwindcss/postcss": "^4",
     "@types/node": "^20",
@@ -33,8 +26,13 @@
     "esbuild": "^0.28.0",
     "eslint": "^9",
     "eslint-config-next": "16.2.6",
+    "html-to-image": "^1.11.13",
+    "next": "16.2.6",
+    "react": "19.2.4",
+    "react-dom": "19.2.4",
     "tailwindcss": "^4",
     "tsx": "^4.21.0",
-    "typescript": "^5"
+    "typescript": "^5",
+    "zod": "^4.4.3"
   }
 }

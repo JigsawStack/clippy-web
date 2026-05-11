@@ -75,18 +75,6 @@ var ClippyWeb = (() => {
   transform: translateY(0);
 }
 
-.clippy-bubble .scroll-arrow {
-  display: inline-block;
-  animation: clippy-bounce 0.8s ease-in-out infinite;
-  margin-right: 6px;
-  font-size: 16px;
-}
-
-@keyframes clippy-bounce {
-  0%, 100% { transform: translateY(0); }
-  50% { transform: translateY(4px); }
-}
-
 .clippy-pulse {
   position: fixed;
   pointer-events: none;
@@ -144,12 +132,6 @@ var ClippyWeb = (() => {
   gap: 2px;
   vertical-align: middle;
   margin-left: 4px;
-}
-
-.clippy-loading {
-  position: fixed;
-  pointer-events: none;
-  z-index: 2147483647;
 }
 
 .clippy-loading-dot {
@@ -222,8 +204,9 @@ var ClippyWeb = (() => {
       this.rafId = 0;
       this._mode = "idle";
       this.spring = 0.12;
+      this.escapeEl = document.createElement("div");
       this.tick = () => {
-        if (this._mode === "idle" || this._mode === "done" || this._mode === "recording" || this._mode === "loading" || this._mode === "typing") {
+        if (this._mode !== "guiding") {
           this.targetX = this.userMouseX + 20;
           this.targetY = this.userMouseY + 20;
         }
@@ -232,21 +215,19 @@ var ClippyWeb = (() => {
         this.cursorEl.style.transform = `translate(${this.curX}px, ${this.curY}px)`;
         const vw = window.innerWidth;
         const vh = window.innerHeight;
-        const flipX = this.curX + 24 + this.bubbleEl.offsetWidth > vw - 10;
-        let bubbleX = flipX ? this.curX - this.bubbleEl.offsetWidth - 8 : this.curX + 24;
+        const bw = this.bubbleEl.offsetWidth;
+        const bh = this.bubbleEl.offsetHeight;
+        const flipX = this.curX + 24 + bw > vw - 10;
+        let bubbleX = flipX ? this.curX - bw - 8 : this.curX + 24;
         let bubbleY = this.curY - 8;
-        if (bubbleY + this.bubbleEl.offsetHeight > vh - 10) {
-          bubbleY = vh - this.bubbleEl.offsetHeight - 10;
-        }
+        if (bubbleY + bh > vh - 10) bubbleY = vh - bh - 10;
         if (bubbleY < 10) bubbleY = 10;
         this.bubbleEl.style.left = `${bubbleX}px`;
         this.bubbleEl.style.top = `${bubbleY}px`;
-        const sideX = flipX ? this.curX - 8 : this.curX + 24;
-        this.loadingEl.style.left = `${flipX ? this.curX - this.loadingEl.offsetWidth - 8 : this.curX + 24}px`;
-        this.loadingEl.style.top = `${this.curY + 4}px`;
-        this.micEl.style.left = `${flipX ? this.curX - this.micEl.offsetWidth - 8 : this.curX + 24}px`;
+        const anchorX = flipX ? this.curX - 8 : this.curX + 24;
+        this.micEl.style.left = `${anchorX}px`;
         this.micEl.style.top = `${this.curY - 4}px`;
-        this.inputWrapEl.style.left = `${flipX ? this.curX - this.inputWrapEl.offsetWidth - 8 : this.curX + 24}px`;
+        this.inputWrapEl.style.left = `${anchorX}px`;
         this.inputWrapEl.style.top = `${this.curY - 8}px`;
         this.rafId = requestAnimationFrame(this.tick);
       };
@@ -272,11 +253,6 @@ var ClippyWeb = (() => {
       this.micEl.innerHTML = '<span class="mic-dot"></span>Listening\u2026';
       this.micEl.style.display = "none";
       this.shadow.appendChild(this.micEl);
-      this.loadingEl = document.createElement("div");
-      this.loadingEl.className = "clippy-loading";
-      this.loadingEl.innerHTML = '<span class="clippy-loading-dot"></span><span class="clippy-loading-dot"></span><span class="clippy-loading-dot"></span>';
-      this.loadingEl.style.display = "none";
-      this.shadow.appendChild(this.loadingEl);
       this.inputWrapEl = document.createElement("div");
       this.inputWrapEl.className = "clippy-input-wrap";
       this.inputEl = document.createElement("input");
@@ -307,7 +283,6 @@ var ClippyWeb = (() => {
     setMode(mode) {
       this._mode = mode;
       this.micEl.style.display = mode === "recording" ? "block" : "none";
-      this.loadingEl.style.display = "none";
       if (mode !== "typing") {
         this.hideInput();
       }
@@ -319,7 +294,6 @@ var ClippyWeb = (() => {
     showLoading(transcript) {
       this._mode = "loading";
       this.micEl.style.display = "none";
-      this.loadingEl.style.display = "none";
       this.hidePulse();
       const dots = '<span class="clippy-inline-dots"><span class="clippy-loading-dot"></span><span class="clippy-loading-dot"></span><span class="clippy-loading-dot"></span></span>';
       const text = transcript ? `"${this.escapeHtml(transcript)}" ${dots}` : `Thinking ${dots}`;
@@ -361,7 +335,6 @@ var ClippyWeb = (() => {
     showInput(onSubmit, onCancel) {
       this._mode = "typing";
       this.micEl.style.display = "none";
-      this.loadingEl.style.display = "none";
       this.hideBubble();
       this.hidePulse();
       this.inputEl.value = "";
@@ -410,9 +383,8 @@ var ClippyWeb = (() => {
       this.shadow.host.remove();
     }
     escapeHtml(s) {
-      const d = document.createElement("div");
-      d.textContent = s;
-      return d.innerHTML;
+      this.escapeEl.textContent = s;
+      return this.escapeEl.innerHTML;
     }
   };
 
@@ -15783,19 +15755,19 @@ Set the \`cycles\` parameter to \`"ref"\` to resolve cyclical schemas with defs.
     const text = el.textContent?.trim() || "";
     return text.length > 80 ? text.slice(0, 80) + "\u2026" : text;
   }
+  var ROLE_MAP = {
+    a: "link",
+    button: "button",
+    input: "input",
+    select: "combobox",
+    textarea: "textbox",
+    label: "label",
+    summary: "button"
+  };
   function getRole(el) {
     const explicit = el.getAttribute("role");
     if (explicit) return explicit;
     const tag = el.tagName.toLowerCase();
-    const roleMap = {
-      a: "link",
-      button: "button",
-      input: "input",
-      select: "combobox",
-      textarea: "textbox",
-      label: "label",
-      summary: "button"
-    };
     if (tag === "input") {
       const type = el.type;
       if (type === "checkbox") return "checkbox";
@@ -15803,7 +15775,7 @@ Set the \`cycles\` parameter to \`"ref"\` to resolve cyclical schemas with defs.
       if (type === "submit" || type === "button") return "button";
       return "textbox";
     }
-    return roleMap[tag] || "generic";
+    return ROLE_MAP[tag] || "generic";
   }
   function isInViewport(rect, vw, vh) {
     return rect.bottom > 0 && rect.top < vh && rect.right > 0 && rect.left < vw;
@@ -15917,7 +15889,10 @@ Rules:
 - Keep instructions concise and friendly (1-2 short sentences).
 - Pick ONE direct route to achieve the goal. Do not suggest alternatives.
 - Plan ALL remaining steps needed to complete the user's goal.
-- If a previousPlan is provided, look at the completedSteps to understand what was already done. Do NOT repeat completed actions.`;
+- If a previousPlan is provided, look at the completedSteps to understand what was already done. Do NOT repeat completed actions.
+- Only suggest steps that are visible on the page and in the domTree.
+- Don't suggest steps that are already completed.
+`;
   var PLAN_JSON_SCHEMA = {
     name: "plan",
     strict: true,
@@ -16004,7 +15979,8 @@ Rules:
       const result = PlanSchema.safeParse(parsed);
       if (result.success) return { plan: result.data, cleanup };
       console.error("[clippy] Plan schema validation failed:", result.error);
-      return { plan: parsed, cleanup };
+      cleanup();
+      return null;
     } catch {
       console.error("[clippy] Failed to parse plan JSON:", content);
       cleanup();
@@ -16103,7 +16079,7 @@ Rules:
       return tag === "input" || tag === "textarea" || tag === "select" || el.isContentEditable;
     }
     setupKeyListeners() {
-      document.addEventListener("keydown", (e) => {
+      this.handleKeyDown = (e) => {
         if (e.code === "KeyX" && !e.repeat && !this.isHolding && !this.isInputFocused() && !this.isTyping) {
           e.preventDefault();
           this.isHolding = true;
@@ -16114,8 +16090,8 @@ Rules:
             }
           }, HOLD_THRESHOLD_MS);
         }
-      });
-      document.addEventListener("keyup", (e) => {
+      };
+      this.handleKeyUp = (e) => {
         if (e.code === "KeyX" && this.isHolding) {
           e.preventDefault();
           this.isHolding = false;
@@ -16127,8 +16103,8 @@ Rules:
             this.stopRecording();
           }
         }
-      });
-      window.addEventListener("blur", () => {
+      };
+      this.handleBlur = () => {
         if (this.isHolding) {
           this.isHolding = false;
           if (this.holdTimer) {
@@ -16137,7 +16113,10 @@ Rules:
           }
           this.stopRecording();
         }
-      });
+      };
+      document.addEventListener("keydown", this.handleKeyDown);
+      document.addEventListener("keyup", this.handleKeyUp);
+      window.addEventListener("blur", this.handleBlur);
     }
     async startRecording() {
       let stream;
@@ -16221,6 +16200,9 @@ Rules:
       this.isHolding = false;
       this.isRecording = false;
       this.cleanup();
+      document.removeEventListener("keydown", this.handleKeyDown);
+      document.removeEventListener("keyup", this.handleKeyUp);
+      window.removeEventListener("blur", this.handleBlur);
     }
   };
 
@@ -16359,36 +16341,27 @@ Rules:
     }
     waitForScrollIdle(sid) {
       return new Promise((resolve) => {
-        let timer = null;
-        let resolved = false;
-        const done = () => {
-          if (resolved) return;
-          resolved = true;
+        let debounce = null;
+        let done = false;
+        const finish = () => {
+          if (done) return;
+          done = true;
           window.removeEventListener("scroll", onScroll, true);
+          if (debounce) clearTimeout(debounce);
+          clearTimeout(maxTimer);
+          clearInterval(cancelCheck);
           resolve();
         };
         const onScroll = () => {
-          if (timer) clearTimeout(timer);
-          timer = setTimeout(done, 500);
+          if (debounce) clearTimeout(debounce);
+          debounce = setTimeout(finish, 500);
         };
         window.addEventListener("scroll", onScroll, { capture: true, passive: true });
-        timer = setTimeout(done, 500);
-        const maxTimeout = setTimeout(() => {
-          done();
-        }, 1e4);
-        const checkCancel = setInterval(() => {
-          if (sid !== this.sessionId) {
-            clearInterval(checkCancel);
-            clearTimeout(maxTimeout);
-            done();
-          }
-        }, 100);
-        const origResolve = resolve;
-        resolve = (v) => {
-          clearInterval(checkCancel);
-          clearTimeout(maxTimeout);
-          origResolve(v);
-        };
+        debounce = setTimeout(finish, 500);
+        const maxTimer = setTimeout(finish, 1e4);
+        const cancelCheck = setInterval(() => {
+          if (sid !== this.sessionId) finish();
+        }, 200);
       });
     }
     waitForClickNear(initialTx, initialTy, step, sid, targetEl) {
@@ -16396,20 +16369,21 @@ Rules:
         let farTimer = null;
         let hasNudged = false;
         let done = false;
+        let rafId = 0;
         let tx = initialTx;
         let ty = initialTy;
         const onClick = (e) => {
           if (done) return;
           const dx = e.clientX - tx;
           const dy = e.clientY - ty;
-          const dist = Math.sqrt(dx * dx + dy * dy);
-          if (dist < CLOSE_RADIUS) {
+          if (dx * dx + dy * dy < CLOSE_RADIUS * CLOSE_RADIUS) {
             finish(true);
           }
         };
         const finish = (result) => {
           if (done) return;
           done = true;
+          cancelAnimationFrame(rafId);
           document.removeEventListener("click", onClick, true);
           if (farTimer) clearTimeout(farTimer);
           resolve(result);
@@ -16436,8 +16410,8 @@ Rules:
           }
           const dx = this.cursor.mouseX - tx;
           const dy = this.cursor.mouseY - ty;
-          const dist = Math.sqrt(dx * dx + dy * dy);
-          if (dist > FAR_RADIUS && !hasNudged) {
+          const distSq = dx * dx + dy * dy;
+          if (distSq > FAR_RADIUS * FAR_RADIUS && !hasNudged) {
             if (!farTimer) {
               farTimer = setTimeout(() => {
                 hasNudged = true;
@@ -16453,16 +16427,16 @@ Rules:
                 this.cursor.showBubble(`Over here! ${step.instruction}`);
               }, FAR_TIMEOUT);
             }
-          } else if (dist <= FAR_RADIUS) {
+          } else if (distSq <= FAR_RADIUS * FAR_RADIUS) {
             hasNudged = false;
             if (farTimer) {
               clearTimeout(farTimer);
               farTimer = null;
             }
           }
-          requestAnimationFrame(check2);
+          rafId = requestAnimationFrame(check2);
         };
-        requestAnimationFrame(check2);
+        rafId = requestAnimationFrame(check2);
       });
     }
     waitForDomQuiet(sid) {

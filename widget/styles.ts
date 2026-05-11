@@ -48,18 +48,6 @@ export const STYLES = `
   transform: translateY(0);
 }
 
-.clippy-bubble .scroll-arrow {
-  display: inline-block;
-  animation: clippy-bounce 0.8s ease-in-out infinite;
-  margin-right: 6px;
-  font-size: 16px;
-}
-
-@keyframes clippy-bounce {
-  0%, 100% { transform: translateY(0); }
-  50% { transform: translateY(4px); }
-}
-
 .clippy-pulse {
   position: fixed;
   pointer-events: none;
@@ -117,12 +105,6 @@ export const STYLES = `
   gap: 2px;
   vertical-align: middle;
   margin-left: 4px;
-}
-
-.clippy-loading {
-  position: fixed;
-  pointer-events: none;
-  z-index: 2147483647;
 }
 
 .clippy-loading-dot {

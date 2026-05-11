@@ -8,7 +8,6 @@ export class ClippyCursor {
   private bubbleEl: HTMLDivElement;
   private pulseEl: HTMLDivElement;
   private micEl: HTMLDivElement;
-  private loadingEl: HTMLDivElement;
   private inputWrapEl: HTMLDivElement;
   private inputEl: HTMLInputElement;
 
@@ -21,6 +20,7 @@ export class ClippyCursor {
   private rafId = 0;
   private _mode: CursorMode = "idle";
   private spring = 0.12;
+  private escapeEl = document.createElement("div");
 
   constructor() {
     const host = document.createElement("div");
@@ -50,13 +50,6 @@ export class ClippyCursor {
     this.micEl.innerHTML = '<span class="mic-dot"></span>Listening…';
     this.micEl.style.display = "none";
     this.shadow.appendChild(this.micEl);
-
-    this.loadingEl = document.createElement("div");
-    this.loadingEl.className = "clippy-loading";
-    this.loadingEl.innerHTML =
-      '<span class="clippy-loading-dot"></span><span class="clippy-loading-dot"></span><span class="clippy-loading-dot"></span>';
-    this.loadingEl.style.display = "none";
-    this.shadow.appendChild(this.loadingEl);
 
     this.inputWrapEl = document.createElement("div");
     this.inputWrapEl.className = "clippy-input-wrap";
@@ -96,7 +89,6 @@ export class ClippyCursor {
   setMode(mode: CursorMode) {
     this._mode = mode;
     this.micEl.style.display = mode === "recording" ? "block" : "none";
-    this.loadingEl.style.display = "none";
     if (mode !== "typing") {
       this.hideInput();
     }
@@ -109,7 +101,6 @@ export class ClippyCursor {
   showLoading(transcript?: string) {
     this._mode = "loading";
     this.micEl.style.display = "none";
-    this.loadingEl.style.display = "none";
     this.hidePulse();
 
     const dots = '<span class="clippy-inline-dots"><span class="clippy-loading-dot"></span><span class="clippy-loading-dot"></span><span class="clippy-loading-dot"></span></span>';
@@ -161,7 +152,6 @@ export class ClippyCursor {
   showInput(onSubmit: (text: string) => void, onCancel: () => void) {
     this._mode = "typing";
     this.micEl.style.display = "none";
-    this.loadingEl.style.display = "none";
     this.hideBubble();
     this.hidePulse();
 
@@ -214,7 +204,7 @@ export class ClippyCursor {
   }
 
   private tick = () => {
-    if (this._mode === "idle" || this._mode === "done" || this._mode === "recording" || this._mode === "loading" || this._mode === "typing") {
+    if (this._mode !== "guiding") {
       this.targetX = this.userMouseX + 20;
       this.targetY = this.userMouseY + 20;
     }
@@ -226,25 +216,22 @@ export class ClippyCursor {
 
     const vw = window.innerWidth;
     const vh = window.innerHeight;
-    const flipX = this.curX + 24 + this.bubbleEl.offsetWidth > vw - 10;
+    const bw = this.bubbleEl.offsetWidth;
+    const bh = this.bubbleEl.offsetHeight;
+    const flipX = this.curX + 24 + bw > vw - 10;
 
-    let bubbleX = flipX ? this.curX - this.bubbleEl.offsetWidth - 8 : this.curX + 24;
+    let bubbleX = flipX ? this.curX - bw - 8 : this.curX + 24;
     let bubbleY = this.curY - 8;
-    if (bubbleY + this.bubbleEl.offsetHeight > vh - 10) {
-      bubbleY = vh - this.bubbleEl.offsetHeight - 10;
-    }
+    if (bubbleY + bh > vh - 10) bubbleY = vh - bh - 10;
     if (bubbleY < 10) bubbleY = 10;
     this.bubbleEl.style.left = `${bubbleX}px`;
     this.bubbleEl.style.top = `${bubbleY}px`;
 
-    const sideX = flipX ? this.curX - 8 : this.curX + 24;
-    this.loadingEl.style.left = `${flipX ? this.curX - this.loadingEl.offsetWidth - 8 : this.curX + 24}px`;
-    this.loadingEl.style.top = `${this.curY + 4}px`;
-
-    this.micEl.style.left = `${flipX ? this.curX - this.micEl.offsetWidth - 8 : this.curX + 24}px`;
+    const anchorX = flipX ? this.curX - 8 : this.curX + 24;
+    this.micEl.style.left = `${anchorX}px`;
     this.micEl.style.top = `${this.curY - 4}px`;
 
-    this.inputWrapEl.style.left = `${flipX ? this.curX - this.inputWrapEl.offsetWidth - 8 : this.curX + 24}px`;
+    this.inputWrapEl.style.left = `${anchorX}px`;
     this.inputWrapEl.style.top = `${this.curY - 8}px`;
 
     this.rafId = requestAnimationFrame(this.tick);
@@ -256,8 +243,7 @@ export class ClippyCursor {
   }
 
   private escapeHtml(s: string) {
-    const d = document.createElement("div");
-    d.textContent = s;
-    return d.innerHTML;
+    this.escapeEl.textContent = s;
+    return this.escapeEl.innerHTML;
   }
 }

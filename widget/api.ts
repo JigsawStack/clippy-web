@@ -15,7 +15,10 @@ Rules:
 - Keep instructions concise and friendly (1-2 short sentences).
 - Pick ONE direct route to achieve the goal. Do not suggest alternatives.
 - Plan ALL remaining steps needed to complete the user's goal.
-- If a previousPlan is provided, look at the completedSteps to understand what was already done. Do NOT repeat completed actions.`;
+- If a previousPlan is provided, look at the completedSteps to understand what was already done. Do NOT repeat completed actions.
+- Only suggest steps that are visible on the page and in the domTree.
+- Don't suggest steps that are already completed.
+`;
 
 const PLAN_JSON_SCHEMA = {
   name: "plan",
@@ -122,7 +125,8 @@ export async function fetchPlan(
     const result = PlanSchema.safeParse(parsed);
     if (result.success) return { plan: result.data, cleanup };
     console.error("[clippy] Plan schema validation failed:", result.error);
-    return { plan: parsed as Plan, cleanup };
+    cleanup();
+    return null;
   } catch {
     console.error("[clippy] Failed to parse plan JSON:", content);
     cleanup();
