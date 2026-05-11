@@ -13,6 +13,7 @@ import { countInteractiveElements } from "./snapshot";
 export class Executor {
   private cursor: ClippyCursor;
   private apiKey: string;
+  private screenshots: boolean;
   private sessionId = 0;
   private currentPlan: Plan | null = null;
   private stepIndex = 0;
@@ -21,9 +22,10 @@ export class Executor {
   private running = false;
   private activeCleanup: (() => void) | null = null;
 
-  constructor(cursor: ClippyCursor, apiKey: string) {
+  constructor(cursor: ClippyCursor, apiKey: string, screenshots = true) {
     this.cursor = cursor;
     this.apiKey = apiKey;
+    this.screenshots = screenshots;
   }
 
   async start(question: string) {
@@ -438,23 +440,59 @@ export class Executor {
   private async callPlan(
     question: string,
     sid: number,
-    previousPlan?: { completedSteps: Step[]; remainingSteps: Step[] }
+    previousPlan?: { completedSteps: Step[]; remainingSteps: Step[] },
+    retries = 1
   ): Promise<Plan | null> {
     try {
       this.abortController = new AbortController();
+      const { signal } = this.abortController;
 
       this.releaseIds();
 
-      const result = await fetchPlan(this.apiKey, {
-        question,
-        previousPlan,
-        signal: this.abortController.signal,
-      });
+      const urlBefore = location.href;
+      const countBefore = countInteractiveElements();
+
+      let pageChanged = false;
+      const changeWatcher = setInterval(() => {
+        const urlNow = location.href;
+        const countNow = countInteractiveElements();
+        if (urlNow !== urlBefore || Math.abs(countNow - countBefore) > 2) {
+          pageChanged = true;
+          this.abortController?.abort();
+        }
+      }, 300);
+
+      let result: Awaited<ReturnType<typeof fetchPlan>> = null;
+      try {
+        result = await fetchPlan(this.apiKey, {
+          question,
+          previousPlan,
+          signal,
+          screenshots: this.screenshots,
+        });
+      } catch (err: any) {
+        if (err.name !== "AbortError") {
+          clearInterval(changeWatcher);
+          throw err;
+        }
+      }
+      clearInterval(changeWatcher);
 
       if (sid !== this.sessionId) {
         result?.cleanup();
         return null;
       }
+
+      if (pageChanged && retries > 0) {
+        result?.cleanup();
+        if (location.href !== urlBefore) {
+          this.cursor.setMode("loading");
+          await this.waitForPageReady(sid);
+          if (sid !== this.sessionId) return null;
+        }
+        return this.callPlan(question, sid, previousPlan, retries - 1);
+      }
+
       if (!result) return null;
 
       this.activeCleanup = result.cleanup;

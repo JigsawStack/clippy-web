@@ -11,7 +11,7 @@ export class Clippy {
 
   constructor(config: ClippyConfig) {
     this.cursor = new ClippyCursor();
-    this.executor = new Executor(this.cursor, config.apiKey);
+    this.executor = new Executor(this.cursor, config.apiKey, config.screenshots !== false);
 
     this.recorder = new Recorder({
       onResult: (transcript) => this.handleTranscript(transcript),
@@ -68,8 +68,9 @@ export class Clippy {
 
 const existing = (window as any).ClippyWeb || {};
 
-const ClippyWeb: { apiKey: string; _instance: Clippy | null; init: () => void } = {
+const ClippyWeb: { apiKey: string; screenshots: boolean; _instance: Clippy | null; init: () => void } = {
   apiKey: existing.apiKey || "",
+  screenshots: existing.screenshots !== false,
   _instance: null,
 
   init() {
@@ -81,7 +82,7 @@ const ClippyWeb: { apiKey: string; _instance: Clippy | null; init: () => void } 
       return;
     }
 
-    this._instance = new Clippy({ apiKey: this.apiKey });
+    this._instance = new Clippy({ apiKey: this.apiKey, screenshots: this.screenshots });
   },
 };
 

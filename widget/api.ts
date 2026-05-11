@@ -2,8 +2,6 @@ import type { Plan, Step } from "./types";
 import { PlanSchema } from "./types";
 import { buildDomTree, takeScreenshot, getPageMeta } from "./snapshot";
 
-
-
 const BASE_URL = "https://api.interfaze.ai/v1";
 const MODEL = "interfaze-beta";
 
@@ -51,16 +49,24 @@ interface FetchPlanOpts {
   question: string;
   previousPlan?: { completedSteps: Step[]; remainingSteps: Step[] };
   signal?: AbortSignal;
+  screenshots?: boolean;
 }
 
 export async function fetchPlan(
   apiKey: string,
   opts: FetchPlanOpts,
 ): Promise<{ plan: Plan; cleanup: () => void } | null> {
-  const [{ domTree, cleanup }, { screenshot, screenshotKind }] = await Promise.all([
-    Promise.resolve(buildDomTree()),
-    takeScreenshot(),
-  ]);
+  const useScreenshots = opts.screenshots !== false;
+
+  const { domTree, cleanup } = buildDomTree();
+  let screenshot = "";
+  let screenshotKind: "viewport" | "fullpage" = "viewport";
+
+  if (useScreenshots) {
+    const result = await takeScreenshot();
+    screenshot = result.screenshot;
+    screenshotKind = result.screenshotKind;
+  }
 
   const meta = getPageMeta();
 
@@ -69,10 +75,13 @@ export async function fetchPlan(
     `URL: ${meta.url}`,
     `Viewport: ${meta.viewport.w}x${meta.viewport.h} (scroll: ${meta.viewport.scrollX},${meta.viewport.scrollY})`,
     `Document: ${meta.documentSize.w}x${meta.documentSize.h}`,
-    `Screenshot: ${screenshotKind}`,
     `DOM (${domTree.length} elements):`,
     JSON.stringify(domTree),
   ];
+
+  if (useScreenshots && screenshot) {
+    textParts.splice(4, 0, `Screenshot: ${screenshotKind}`);
+  }
 
   if (opts.previousPlan) {
     textParts.push(
@@ -84,7 +93,7 @@ export async function fetchPlan(
   }
 
   const userContent: any[] = [{ type: "text", text: textParts.join("\n") }];
-  if (screenshot) {
+  if (useScreenshots && screenshot) {
     userContent.push({ type: "image_url", image_url: { url: screenshot } });
   }
 

@@ -15936,20 +15936,27 @@ Rules:
     }
   };
   async function fetchPlan(apiKey, opts) {
-    const [{ domTree, cleanup }, { screenshot, screenshotKind }] = await Promise.all([
-      Promise.resolve(buildDomTree()),
-      takeScreenshot()
-    ]);
+    const useScreenshots = opts.screenshots !== false;
+    const { domTree, cleanup } = buildDomTree();
+    let screenshot = "";
+    let screenshotKind = "viewport";
+    if (useScreenshots) {
+      const result = await takeScreenshot();
+      screenshot = result.screenshot;
+      screenshotKind = result.screenshotKind;
+    }
     const meta3 = getPageMeta();
     const textParts = [
       `Question: ${opts.question}`,
       `URL: ${meta3.url}`,
       `Viewport: ${meta3.viewport.w}x${meta3.viewport.h} (scroll: ${meta3.viewport.scrollX},${meta3.viewport.scrollY})`,
       `Document: ${meta3.documentSize.w}x${meta3.documentSize.h}`,
-      `Screenshot: ${screenshotKind}`,
       `DOM (${domTree.length} elements):`,
       JSON.stringify(domTree)
     ];
+    if (useScreenshots && screenshot) {
+      textParts.splice(4, 0, `Screenshot: ${screenshotKind}`);
+    }
     if (opts.previousPlan) {
       textParts.push(
         "",
@@ -15959,7 +15966,7 @@ Rules:
       );
     }
     const userContent = [{ type: "text", text: textParts.join("\n") }];
-    if (screenshot) {
+    if (useScreenshots && screenshot) {
       userContent.push({ type: "image_url", image_url: { url: screenshot } });
     }
     const resp = await fetch(`${BASE_URL}/chat/completions`, {
@@ -16228,7 +16235,7 @@ Rules:
 
   // widget/executor.ts
   var Executor = class {
-    constructor(cursor, apiKey) {
+    constructor(cursor, apiKey, screenshots = true) {
       this.sessionId = 0;
       this.currentPlan = null;
       this.stepIndex = 0;
@@ -16238,6 +16245,7 @@ Rules:
       this.activeCleanup = null;
       this.cursor = cursor;
       this.apiKey = apiKey;
+      this.screenshots = screenshots;
     }
     async start(question) {
       this.sessionId++;
@@ -16565,18 +16573,49 @@ Rules:
         timer = setTimeout(done, DOM_QUIET_MS);
       });
     }
-    async callPlan(question, sid, previousPlan) {
+    async callPlan(question, sid, previousPlan, retries = 1) {
       try {
         this.abortController = new AbortController();
+        const { signal } = this.abortController;
         this.releaseIds();
-        const result = await fetchPlan(this.apiKey, {
-          question,
-          previousPlan,
-          signal: this.abortController.signal
-        });
+        const urlBefore = location.href;
+        const countBefore = countInteractiveElements();
+        let pageChanged = false;
+        const changeWatcher = setInterval(() => {
+          const urlNow = location.href;
+          const countNow = countInteractiveElements();
+          if (urlNow !== urlBefore || Math.abs(countNow - countBefore) > 2) {
+            pageChanged = true;
+            this.abortController?.abort();
+          }
+        }, 300);
+        let result = null;
+        try {
+          result = await fetchPlan(this.apiKey, {
+            question,
+            previousPlan,
+            signal,
+            screenshots: this.screenshots
+          });
+        } catch (err) {
+          if (err.name !== "AbortError") {
+            clearInterval(changeWatcher);
+            throw err;
+          }
+        }
+        clearInterval(changeWatcher);
         if (sid !== this.sessionId) {
           result?.cleanup();
           return null;
+        }
+        if (pageChanged && retries > 0) {
+          result?.cleanup();
+          if (location.href !== urlBefore) {
+            this.cursor.setMode("loading");
+            await this.waitForPageReady(sid);
+            if (sid !== this.sessionId) return null;
+          }
+          return this.callPlan(question, sid, previousPlan, retries - 1);
         }
         if (!result) return null;
         this.activeCleanup = result.cleanup;
@@ -16624,7 +16663,7 @@ Rules:
     constructor(config2) {
       this.isProcessing = false;
       this.cursor = new ClippyCursor();
-      this.executor = new Executor(this.cursor, config2.apiKey);
+      this.executor = new Executor(this.cursor, config2.apiKey, config2.screenshots !== false);
       this.recorder = new Recorder({
         onResult: (transcript) => this.handleTranscript(transcript),
         onStart: () => {
@@ -16678,6 +16717,7 @@ Rules:
   var existing = window.ClippyWeb || {};
   var ClippyWeb = {
     apiKey: existing.apiKey || "",
+    screenshots: existing.screenshots !== false,
     _instance: null,
     init() {
       if (typeof document === "undefined") return;
@@ -16686,7 +16726,7 @@ Rules:
         console.warn("[clippy] No API key provided. Set ClippyWeb.apiKey before loading clippy.js.");
         return;
       }
-      this._instance = new Clippy({ apiKey: this.apiKey });
+      this._instance = new Clippy({ apiKey: this.apiKey, screenshots: this.screenshots });
     }
   };
   window.ClippyWeb = ClippyWeb;

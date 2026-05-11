@@ -49,7 +49,7 @@ That's it. Clippy is now active on your page.
 ## How It Works
 
 1. **Press X** to open a text input, or **hold X** to speak a question
-2. Clippy takes a screenshot, analyzes the page with interfaze.ai, and builds a step-by-step plan
+2. Clippy analyzes the page with interfaze.ai (using the DOM tree and optionally a screenshot) and builds a step-by-step plan
 3. A floating cursor guides the user to each element they need to interact with
 4. Click near the highlighted element to advance to the next step
 5. Press or hold **X** again anytime to ask a new question (interrupts the current guide)
@@ -135,6 +135,14 @@ Set your interfaze.ai API key. Must be set **before** the script loads.
 
 ```js
 window.ClippyWeb = { apiKey: "your-key" };
+```
+
+### `ClippyWeb.screenshots`
+
+Enable or disable sending screenshots to interfaze.ai. When `false`, only the DOM tree is sent, which is faster but may be less accurate. Defaults to `true`.
+
+```js
+window.ClippyWeb = { apiKey: "your-key", screenshots: false };
 ```
 
 ### `ClippyWeb.init()`

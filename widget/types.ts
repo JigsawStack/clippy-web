@@ -23,6 +23,7 @@ export interface DomNode {
 
 export interface ClippyConfig {
   apiKey: string;
+  screenshots?: boolean;
 }
 
 export const CLOSE_RADIUS = 80;
