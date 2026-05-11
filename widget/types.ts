@@ -25,7 +25,7 @@ export interface ClippyConfig {
   apiKey: string;
 }
 
-export const CLOSE_RADIUS = 150;
+export const CLOSE_RADIUS = 80;
 export const FAR_RADIUS = 400;
 export const FAR_TIMEOUT = 1500;
 export const DOM_QUIET_MS = 300;

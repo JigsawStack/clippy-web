@@ -181,6 +181,10 @@ export async function takeScreenshot(): Promise<{
   }
 }
 
+export function countInteractiveElements(): number {
+  return document.querySelectorAll(INTERACTIVE_SELECTOR).length;
+}
+
 export function getPageMeta() {
   return {
     url: window.location.href,

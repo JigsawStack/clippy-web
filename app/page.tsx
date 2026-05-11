@@ -25,6 +25,12 @@ const DEMOS = [
     desc: "3-section form (shipping, payment, review) with type actions and form progression.",
     tag: "Type & navigate",
   },
+  {
+    href: "/onboarding",
+    title: "Slow Onboarding",
+    desc: "4-step onboarding wizard where each page takes 2–3 seconds to load. Tests Clippy's page-change handling.",
+    tag: "Slow page loads",
+  },
 ];
 
 export default function HomePage() {

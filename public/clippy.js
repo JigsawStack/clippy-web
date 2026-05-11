@@ -14911,7 +14911,7 @@ Set the \`cycles\` parameter to \`"ref"\` to resolve cyclical schemas with defs.
     steps: external_exports.array(StepSchema),
     completesGoal: external_exports.boolean()
   });
-  var CLOSE_RADIUS = 150;
+  var CLOSE_RADIUS = 80;
   var FAR_RADIUS = 400;
   var FAR_TIMEOUT = 1500;
   var DOM_QUIET_MS = 300;
@@ -15860,6 +15860,9 @@ Set the \`cycles\` parameter to \`"ref"\` to resolve cyclical schemas with defs.
       return { screenshot: "", screenshotKind: "viewport" };
     }
   }
+  function countInteractiveElements() {
+    return document.querySelectorAll(INTERACTIVE_SELECTOR).length;
+  }
   function getPageMeta() {
     return {
       url: window.location.href,
@@ -16250,8 +16253,10 @@ Rules:
       }
     }
     async walkSteps(question, sid) {
+      let lastUrl = location.href;
       while (sid === this.sessionId) {
         while (this.currentPlan && this.stepIndex < this.currentPlan.steps.length && sid === this.sessionId) {
+          lastUrl = location.href;
           const step = this.currentPlan.steps[this.stepIndex];
           const success2 = await this.executeStep(step, sid);
           if (sid !== this.sessionId) return;
@@ -16267,7 +16272,12 @@ Rules:
         }
         if (sid !== this.sessionId) return;
         if (this.currentPlan?.completesGoal) break;
-        await this.waitForDomQuiet(sid);
+        const navigated = location.href !== lastUrl;
+        if (navigated) {
+          await this.waitForPageReady(sid, countInteractiveElements());
+        } else {
+          await this.waitForDomQuiet(sid);
+        }
         if (sid !== this.sessionId) return;
         const continuePlan = await this.replan(question, sid);
         if (sid !== this.sessionId) return;
@@ -16311,10 +16321,19 @@ Rules:
       this.cursor.moveTo(cursorX, cursorY);
       this.cursor.showBubble(step.instruction);
       this.cursor.showPulse(freshRect);
+      const urlBefore = location.href;
+      const countBefore = countInteractiveElements();
       const reached = await this.waitForClickNear(elCx, elCy, step, sid, el);
       if (sid !== this.sessionId) return false;
       if (!reached) return false;
-      await this.waitForDomQuiet(sid);
+      await this.sleep(150, sid);
+      if (sid !== this.sessionId) return false;
+      const navigated = location.href !== urlBefore;
+      if (navigated) {
+        await this.waitForPageReady(sid, countBefore);
+      } else {
+        await this.waitForDomQuiet(sid);
+      }
       this.cursor.hidePulse();
       return sid === this.sessionId;
     }
@@ -16372,6 +16391,9 @@ Rules:
         let rafId = 0;
         let tx = initialTx;
         let ty = initialTy;
+        const onTargetInteract = () => {
+          if (!done) finish(true);
+        };
         const onClick = (e) => {
           if (done) return;
           const dx = e.clientX - tx;
@@ -16385,9 +16407,19 @@ Rules:
           done = true;
           cancelAnimationFrame(rafId);
           document.removeEventListener("click", onClick, true);
+          if (targetEl) {
+            targetEl.removeEventListener("click", onTargetInteract, true);
+            targetEl.removeEventListener("focus", onTargetInteract, true);
+            targetEl.removeEventListener("change", onTargetInteract);
+          }
           if (farTimer) clearTimeout(farTimer);
           resolve(result);
         };
+        if (targetEl) {
+          targetEl.addEventListener("click", onTargetInteract, true);
+          targetEl.addEventListener("focus", onTargetInteract, true);
+          targetEl.addEventListener("change", onTargetInteract);
+        }
         document.addEventListener("click", onClick, true);
         const check2 = () => {
           if (done) return;
@@ -16437,6 +16469,47 @@ Rules:
           rafId = requestAnimationFrame(check2);
         };
         rafId = requestAnimationFrame(check2);
+      });
+    }
+    waitForPageReady(sid, countBefore = 0) {
+      const MIN_ELEMENTS = 3;
+      const STABLE_MS = 1e3;
+      const MAX_WAIT = 15e3;
+      return new Promise((resolve) => {
+        let done = false;
+        let contentChanged = false;
+        let lastCount = 0;
+        let stableSince = 0;
+        const finish = () => {
+          if (done) return;
+          done = true;
+          clearInterval(poll);
+          clearTimeout(maxTimer);
+          resolve();
+        };
+        const poll = setInterval(() => {
+          if (sid !== this.sessionId) {
+            finish();
+            return;
+          }
+          const count = countInteractiveElements();
+          if (!contentChanged) {
+            if (count !== countBefore) {
+              contentChanged = true;
+              lastCount = count;
+              stableSince = count >= MIN_ELEMENTS ? Date.now() : 0;
+            }
+            return;
+          }
+          if (count !== lastCount) {
+            lastCount = count;
+            stableSince = count >= MIN_ELEMENTS ? Date.now() : 0;
+          }
+          if (stableSince > 0 && Date.now() - stableSince >= STABLE_MS) {
+            finish();
+          }
+        }, 200);
+        const maxTimer = setTimeout(finish, MAX_WAIT);
       });
     }
     waitForDomQuiet(sid) {

@@ -8,6 +8,7 @@ import {
   DOM_QUIET_MAX_MS,
 } from "./types";
 import { fetchPlan } from "./api";
+import { countInteractiveElements } from "./snapshot";
 
 export class Executor {
   private cursor: ClippyCursor;
@@ -62,12 +63,15 @@ export class Executor {
   }
 
   private async walkSteps(question: string, sid: number) {
+    let lastUrl = location.href;
+
     while (sid === this.sessionId) {
       while (
         this.currentPlan &&
         this.stepIndex < this.currentPlan.steps.length &&
         sid === this.sessionId
       ) {
+        lastUrl = location.href;
         const step = this.currentPlan.steps[this.stepIndex];
         const success = await this.executeStep(step, sid);
         if (sid !== this.sessionId) return;
@@ -87,7 +91,12 @@ export class Executor {
       if (sid !== this.sessionId) return;
       if (this.currentPlan?.completesGoal) break;
 
-      await this.waitForDomQuiet(sid);
+      const navigated = location.href !== lastUrl;
+      if (navigated) {
+        await this.waitForPageReady(sid, countInteractiveElements());
+      } else {
+        await this.waitForDomQuiet(sid);
+      }
       if (sid !== this.sessionId) return;
 
       const continuePlan = await this.replan(question, sid);
@@ -147,11 +156,22 @@ export class Executor {
     this.cursor.showBubble(step.instruction);
     this.cursor.showPulse(freshRect);
 
+    const urlBefore = location.href;
+    const countBefore = countInteractiveElements();
+
     const reached = await this.waitForClickNear(elCx, elCy, step, sid, el);
     if (sid !== this.sessionId) return false;
     if (!reached) return false;
 
-    await this.waitForDomQuiet(sid);
+    await this.sleep(150, sid);
+    if (sid !== this.sessionId) return false;
+
+    const navigated = location.href !== urlBefore;
+    if (navigated) {
+      await this.waitForPageReady(sid, countBefore);
+    } else {
+      await this.waitForDomQuiet(sid);
+    }
     this.cursor.hidePulse();
 
     return sid === this.sessionId;
@@ -237,6 +257,10 @@ export class Executor {
       let tx = initialTx;
       let ty = initialTy;
 
+      const onTargetInteract = () => {
+        if (!done) finish(true);
+      };
+
       const onClick = (e: MouseEvent) => {
         if (done) return;
         const dx = e.clientX - tx;
@@ -251,10 +275,20 @@ export class Executor {
         done = true;
         cancelAnimationFrame(rafId);
         document.removeEventListener("click", onClick, true);
+        if (targetEl) {
+          targetEl.removeEventListener("click", onTargetInteract, true);
+          targetEl.removeEventListener("focus", onTargetInteract, true);
+          targetEl.removeEventListener("change", onTargetInteract);
+        }
         if (farTimer) clearTimeout(farTimer);
         resolve(result);
       };
 
+      if (targetEl) {
+        targetEl.addEventListener("click", onTargetInteract, true);
+        targetEl.addEventListener("focus", onTargetInteract, true);
+        targetEl.addEventListener("change", onTargetInteract);
+      }
       document.addEventListener("click", onClick, true);
 
       const check = () => {
@@ -307,6 +341,53 @@ export class Executor {
       };
 
       rafId = requestAnimationFrame(check);
+    });
+  }
+
+  private waitForPageReady(sid: number, countBefore = 0): Promise<void> {
+    const MIN_ELEMENTS = 3;
+    const STABLE_MS = 1000;
+    const MAX_WAIT = 15000;
+
+    return new Promise((resolve) => {
+      let done = false;
+      let contentChanged = false;
+      let lastCount = 0;
+      let stableSince = 0;
+
+      const finish = () => {
+        if (done) return;
+        done = true;
+        clearInterval(poll);
+        clearTimeout(maxTimer);
+        resolve();
+      };
+
+      const poll = setInterval(() => {
+        if (sid !== this.sessionId) { finish(); return; }
+
+        const count = countInteractiveElements();
+
+        if (!contentChanged) {
+          if (count !== countBefore) {
+            contentChanged = true;
+            lastCount = count;
+            stableSince = count >= MIN_ELEMENTS ? Date.now() : 0;
+          }
+          return;
+        }
+
+        if (count !== lastCount) {
+          lastCount = count;
+          stableSince = count >= MIN_ELEMENTS ? Date.now() : 0;
+        }
+
+        if (stableSince > 0 && Date.now() - stableSince >= STABLE_MS) {
+          finish();
+        }
+      }, 200);
+
+      const maxTimer = setTimeout(finish, MAX_WAIT);
     });
   }
 

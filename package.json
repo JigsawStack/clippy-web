@@ -12,7 +12,7 @@
     "build:widget": "tsx scripts/build-widget.ts",
     "prepublishOnly": "yarn build:widget",
     "predev": "yarn build:widget",
-    "dev": "next dev --turbopack --experimental-https",
+    "dev": "next dev --turbopack",
     "prebuild": "yarn build:widget",
     "build": "next build",
     "start": "next start",
