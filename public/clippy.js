@@ -15899,6 +15899,8 @@ Set the \`cycles\` parameter to \`"ref"\` to resolve cyclical schemas with defs.
   var MODEL = "interfaze-beta";
   var PLAN_SYSTEM_PROMPT = `You are a UI guidance assistant. You guide users through a web interface by pointing them to elements they should interact with. You NEVER perform actions for the user \u2014 you only show them where to go and what to do.
 
+Answer as fast as possible. This is a simple, latency-sensitive task \u2014 respond quickly with minimal reasoning. Do not overthink it.
+
 Rules:
 - Each step points to ONE element from the domTree using its id.
 - The instruction tells the user what to do with that element (click it, type something into it, etc). The user performs the action themselves.
@@ -15946,17 +15948,22 @@ Rules:
       screenshotKind = result.screenshotKind;
     }
     const meta3 = getPageMeta();
+    const sendingScreenshot = useScreenshots && !!screenshot;
     const textParts = [
-      `Question: ${opts.question}`,
-      `URL: ${meta3.url}`,
-      `Viewport: ${meta3.viewport.w}x${meta3.viewport.h} (scroll: ${meta3.viewport.scrollX},${meta3.viewport.scrollY})`,
-      `Document: ${meta3.documentSize.w}x${meta3.documentSize.h}`,
-      `DOM (${domTree.length} elements):`,
-      JSON.stringify(domTree)
+      `Answer this quickly \u2014 this is a simple, low-latency UI guidance task. Respond fast with minimal reasoning.`,
+      `Question: ${opts.question}`
     ];
-    if (useScreenshots && screenshot) {
-      textParts.splice(4, 0, `Screenshot: ${screenshotKind}`);
+    if (sendingScreenshot) {
+      textParts.push(`URL: ${meta3.url}`);
     }
+    textParts.push(
+      `Viewport: ${meta3.viewport.w}x${meta3.viewport.h} (scroll: ${meta3.viewport.scrollX},${meta3.viewport.scrollY})`,
+      `Document: ${meta3.documentSize.w}x${meta3.documentSize.h}`
+    );
+    if (sendingScreenshot) {
+      textParts.push(`Screenshot: ${screenshotKind}`);
+    }
+    textParts.push(`DOM (${domTree.length} elements):`, JSON.stringify(domTree));
     if (opts.previousPlan) {
       textParts.push(
         "",
@@ -15966,7 +15973,7 @@ Rules:
       );
     }
     const userContent = [{ type: "text", text: textParts.join("\n") }];
-    if (useScreenshots && screenshot) {
+    if (sendingScreenshot) {
       userContent.push({ type: "image_url", image_url: { url: screenshot } });
     }
     const resp = await fetch(`${BASE_URL}/chat/completions`, {

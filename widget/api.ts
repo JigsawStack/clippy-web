@@ -2,10 +2,12 @@ import type { Plan, Step } from "./types";
 import { PlanSchema } from "./types";
 import { buildDomTree, takeScreenshot, getPageMeta } from "./snapshot";
 
-const BASE_URL = "https://api.interfaze.ai/v1";
+const BASE_URL = "https://api.interfaze.ai/v1"; // prod ("/v1" is required — root path 404s)
 const MODEL = "interfaze-beta";
 
 const PLAN_SYSTEM_PROMPT = `You are a UI guidance assistant. You guide users through a web interface by pointing them to elements they should interact with. You NEVER perform actions for the user — you only show them where to go and what to do.
+
+Answer as fast as possible. This is a simple, latency-sensitive task — respond quickly with minimal reasoning. Do not overthink it.
 
 Rules:
 - Each step points to ONE element from the domTree using its id.
@@ -70,18 +72,30 @@ export async function fetchPlan(
 
   const meta = getPageMeta();
 
+  const sendingScreenshot = useScreenshots && !!screenshot;
+
   const textParts = [
+    `Answer this quickly — this is a simple, low-latency UI guidance task. Respond fast with minimal reasoning.`,
     `Question: ${opts.question}`,
-    `URL: ${meta.url}`,
-    `Viewport: ${meta.viewport.w}x${meta.viewport.h} (scroll: ${meta.viewport.scrollX},${meta.viewport.scrollY})`,
-    `Document: ${meta.documentSize.w}x${meta.documentSize.h}`,
-    `DOM (${domTree.length} elements):`,
-    JSON.stringify(domTree),
   ];
 
-  if (useScreenshots && screenshot) {
-    textParts.splice(4, 0, `Screenshot: ${screenshotKind}`);
+  // Only send the page URL when an actual screenshot accompanies it. With no image the URL is dead
+  // weight — and Interfaze extracts any bare URL in the prompt into a phantom file ref that the
+  // tool-calling model then hands to gui_detection (which fails: it's an HTML page, not an image).
+  if (sendingScreenshot) {
+    textParts.push(`URL: ${meta.url}`);
   }
+
+  textParts.push(
+    `Viewport: ${meta.viewport.w}x${meta.viewport.h} (scroll: ${meta.viewport.scrollX},${meta.viewport.scrollY})`,
+    `Document: ${meta.documentSize.w}x${meta.documentSize.h}`,
+  );
+
+  if (sendingScreenshot) {
+    textParts.push(`Screenshot: ${screenshotKind}`);
+  }
+
+  textParts.push(`DOM (${domTree.length} elements):`, JSON.stringify(domTree));
 
   if (opts.previousPlan) {
     textParts.push(
@@ -93,7 +107,7 @@ export async function fetchPlan(
   }
 
   const userContent: any[] = [{ type: "text", text: textParts.join("\n") }];
-  if (useScreenshots && screenshot) {
+  if (sendingScreenshot) {
     userContent.push({ type: "image_url", image_url: { url: screenshot } });
   }
 
